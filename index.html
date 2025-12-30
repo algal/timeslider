@@ -1,0 +1,2341 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TimeSlider — per-card native time edit</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    h1 a {         text-decoration: none; color: inherit;    }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 1.5rem;
+      line-height: 1.5;
+      color: #1a1a1a;
+      background: #fff;
+    }
+    .app {
+      width: 100%;
+      max-width: 60rem;
+      margin: 0 auto;
+      position: relative;
+    }
+    h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0;
+      color: #666;
+    }
+    :root {
+      --slider-thumb-size: 44px;
+      --slider-track-height: 4px;
+      --slider-track-color: rgba(0, 0, 0, 0.18);
+      --slider-thumb-border: rgba(74, 144, 226, 0.9);
+      --slider-thumb-fill: #fff;
+    }
+
+    /* Reticule */
+    .slider-reticule {
+      position: absolute;
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+      inset: 0;
+    }
+    .slider-reticule-segment {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 0;
+      width: var(--slider-thumb-size);
+      border: 3px solid rgba(74, 144, 226, 0.35);
+      border-radius: 6px;
+      background: transparent;
+      transform: translateX(-50%);
+      pointer-events: auto;
+      cursor: grab;
+      touch-action: pan-y;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+    }
+    .app.reticule-dragging .slider-reticule-segment {
+      cursor: grabbing;
+    }
+
+    /* Variant C: Two-column semantic split */
+    .zone-card {
+      position: relative;
+      background: #fff;
+      border: 1px solid #bbb;
+      border-radius: 6px;
+      padding: 0.75rem 3rem 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+      display: grid;
+      grid-template-columns: minmax(0,1fr) auto;
+      gap: 0.25rem 1rem;
+    }
+    .zone-card.hero {
+      background: #f0f7ff;
+      border-color: #4a90e2;
+      border-width: 2px;
+    }
+    /* Left column: identity */
+    .zone-name {
+      font-size: 0.9rem;
+      color: #555;
+      font-weight: 500;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .zone-offset-utc {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    /* Right column: result */
+    .zone-time {
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .zone-time-input {
+      min-height: 44px;
+      padding: 0.35rem 0.4rem;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      background: #fff;
+      font: inherit;
+      color: #1a1a1a;
+      text-align: right;
+      min-width: 0;
+    }
+    .zone-time-input:focus-visible {
+      outline: 2px solid rgba(74, 144, 226, 0.55);
+      outline-offset: 3px;
+      border-color: rgba(74, 144, 226, 0.35);
+    }
+    .zone-time-edit {
+      border: none;
+      background: none;
+      padding: 0;
+      font: inherit;
+      color: #2b6cb0;
+      cursor: pointer;
+      position: relative;
+      z-index: 6;
+    }
+    .zone-time-edit:hover {
+      text-decoration: underline;
+    }
+    .zone-time-edit:focus-visible {
+      outline: 2px solid rgba(74, 144, 226, 0.55);
+      outline-offset: 3px;
+      border-radius: 4px;
+      text-decoration: none;
+    }
+    .zone-offset-local {
+      font-size: 0.8rem;
+      color: #888;
+      text-align: right;
+    }
+    .zone-now {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      border: 1px solid rgba(74, 144, 226, 0.35);
+      background: rgba(74, 144, 226, 0.08);
+      color: #2b6cb0;
+      border-radius: 999px;
+      padding: 0.25rem 0.55rem;
+      font-size: 0.8rem;
+      line-height: 1;
+      cursor: pointer;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .zone-now:focus-visible {
+      outline: 2px solid rgba(74, 144, 226, 0.55);
+      outline-offset: 3px;
+    }
+    @media (hover: hover) {
+      .zone-now:hover {
+        background: rgba(74, 144, 226, 0.12);
+      }
+    }
+    .zone-now-center {
+      position: absolute;
+      top: 0.5rem;
+      left: 0;
+      transform: translate(-50%, -50%);
+      min-height: 32px;
+      padding: 0.2rem 0.55rem;
+      border: 1px solid rgba(74, 144, 226, 0.35);
+      background: rgba(255, 255, 255, 0.92);
+      color: #2b6cb0;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      -webkit-user-select: none;
+      user-select: none;
+      z-index: 6;
+    }
+    @media (hover: hover) {
+      .zone-now-center:hover {
+        background: #fff;
+      }
+    }
+    .zone-now-center:focus-visible {
+      outline: 2px solid rgba(74, 144, 226, 0.55);
+      outline-offset: 3px;
+    }
+
+    /* Time markers (row 3) */
+    .zone-markers {
+      grid-column: 1 / -1;
+      height: 1.6rem;
+      margin: 0.35rem -3rem 0 -1rem;
+      padding: 0.15rem 0.25rem 0 0.25rem;
+      position: relative;
+    }
+    .zone-card.hero .zone-markers {
+      height: 2.35rem;
+    }
+    .zone-markers::before {
+      content: "";
+      position: absolute;
+      left: var(--axis-left, 0.25rem);
+      right: var(--axis-right, 0.25rem);
+      top: 0.5rem;
+      height: 1px;
+      background: rgba(0, 0, 0, 0.12);
+    }
+    .zone-marker {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.15rem;
+      font-size: 0.7rem;
+      color: #999;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+    }
+    .zone-marker.edge-left {
+      transform: translateX(0);
+      align-items: flex-start;
+    }
+    .zone-marker.edge-right {
+      transform: translateX(-100%);
+      align-items: flex-end;
+    }
+    .zone-marker .tick {
+      width: 1px;
+      height: 7px;
+      background: rgba(0, 0, 0, 0.22);
+    }
+    .zone-marker.is-zero {
+      color: #777;
+    }
+    .zone-marker.is-zero .tick {
+      height: 10px;
+      background: rgba(74, 144, 226, 0.35);
+    }
+    .zone-markers.hide-zero-label .zone-marker.is-zero .label {
+      display: none;
+    }
+    .zone-remove {
+      position: absolute;
+      top: 50%;
+      right: 0.25rem;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      color: #999;
+      font-size: 1.25rem;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0.5rem;
+      min-width: 44px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    @media (hover: hover) {
+      .zone-remove:hover {
+        color: #333;
+      }
+    }
+
+    /* Add timezone */
+    .add-zone {
+      display: flex;
+      gap: 0.5rem;
+      margin: 0.75rem 0;
+    }
+    .add-zone input {
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 44px;
+      padding: 0.5rem 0.75rem;
+      font-size: 16px;
+      border: 1px solid #999;
+      border-radius: 4px;
+    }
+    .add-zone input:focus {
+      outline: 2px solid #4a90e2;
+      outline-offset: -1px;
+    }
+    .add-zone button {
+      flex: 0 0 auto;
+      min-width: 3.5rem;
+      min-height: 44px;
+      padding: 0.5rem 1rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: #1a1a1a;
+      white-space: nowrap;
+      overflow: visible;
+      border: 1px solid #999;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    @media (hover: hover) {
+      .add-zone button:hover {
+        background: #f5f5f5;
+      }
+    }
+    .feedback {
+      font-size: 0.85rem;
+      color: #c00;
+    }
+    .feedback:empty {
+      display: none;
+    }
+    .feedback.success {
+      color: #080;
+    }
+
+    /* Slider */
+    .slider-section {
+      margin: 0 0;
+      padding: 1rem 0;
+    }
+    .slider-section label {
+      display: block;
+      font-size: 0.85rem;
+      color: #888;
+      margin-bottom: 0.5rem;
+    }
+    .slider-section input[type="range"] {
+      width: 100%;
+      margin: 0;
+      -webkit-appearance: none;
+      appearance: none;
+      height: var(--slider-thumb-size);
+      background: transparent;
+    }
+    .slider-section input[type="range"]::-webkit-slider-runnable-track {
+      height: var(--slider-track-height);
+      background: var(--slider-track-color);
+      border-radius: 999px;
+    }
+    .slider-section input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: var(--slider-thumb-size);
+      height: var(--slider-thumb-size);
+      border-radius: 999px;
+      background: var(--slider-thumb-fill);
+      border: 2px solid var(--slider-thumb-border);
+      margin-top: calc((var(--slider-track-height) - var(--slider-thumb-size)) / 2);
+    }
+    .slider-section input[type="range"]::-moz-range-track {
+      height: var(--slider-track-height);
+      background: var(--slider-track-color);
+      border-radius: 999px;
+    }
+    .slider-section input[type="range"]::-moz-range-thumb {
+      width: var(--slider-thumb-size);
+      height: var(--slider-thumb-size);
+      border-radius: 999px;
+      background: var(--slider-thumb-fill);
+      border: 2px solid var(--slider-thumb-border);
+    }
+    .slider-section input[type="range"]::-moz-focus-outer {
+      border: 0;
+    }
+    .slider-section input[type="range"].slider-disabled {
+      opacity: 0.5;
+      pointer-events: none;
+    }
+    .slider-section input[type="range"].slider-disabled::-webkit-slider-thumb {
+      opacity: 0;
+    }
+    .slider-section input[type="range"].slider-disabled::-moz-range-thumb {
+      opacity: 0;
+    }
+    .slider-section input[type="range"].slider-disabled::-ms-thumb {
+      opacity: 0;
+    }
+    .slider-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 0.25rem;
+    }
+    .slider-labels .reset-now {
+      color: #4a90e2;
+      cursor: pointer;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 2px;
+    }
+    @media (hover: hover) {
+      .slider-labels .reset-now:hover {
+        color: #2a70c2;
+        text-decoration-style: solid;
+      }
+    }
+
+    /* Share section */
+    .share-section {
+      margin: 1.5rem 0;
+      padding-top: 1rem;
+      border-top: 1px solid #ccc;
+    }
+    .share-section h2 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #888;
+      margin: 0 0 0.75rem;
+    }
+    .share-section p {
+      font-size: 0.85rem;
+      font-weight: 400;
+      color: #888;
+      margin: 0 0 0.75rem;
+    }
+    .share-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .share-btn {
+      min-height: 44px;
+      padding: 0.625rem 1rem;
+      font-size: 0.9rem;
+      border: 1px solid #999;
+      border-radius: 4px;
+      background: #fff;
+      cursor: pointer;
+    }
+    @media (hover: hover) {
+      .share-btn:hover {
+        background: #f5f5f5;
+      }
+    }
+    .share-btn.copied {
+      background: #d4edda;
+      border-color: #28a745;
+      color: #155724;
+    }
+    @media (max-width: 400px) {
+      .share-btn {
+        padding: 0.5rem 0.75rem;
+      }
+    }
+
+    /* Adjust time (collapsible) */
+    .adjust-section {
+      margin: 1rem 0;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid #ccc;
+    }
+    .adjust-section summary {
+      font-size: 0.85rem;
+      color: #888;
+      cursor: pointer;
+      padding: 0.5rem 0;
+    }
+    .adjust-section summary:hover {
+      color: #555;
+    }
+    .datetime-fields {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 0.75rem;
+    }
+    .datetime-group {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 0.5rem;
+    }
+    .datetime-field {
+      display: flex;
+      flex-direction: column;
+    }
+    .datetime-field label {
+      font-size: 0.75rem;
+      color: #888;
+      margin-bottom: 0.25rem;
+    }
+    .datetime-field input {
+      width: 4rem;
+      min-height: 44px;
+      padding: 0.4rem;
+      font-size: 16px;
+      border: 1px solid #999;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .datetime-field input#input-year {
+      width: 5.5rem;
+    }
+    .datetime-field input:focus {
+      outline: 2px solid #4a90e2;
+      outline-offset: -1px;
+    }
+    .datetime-note {
+      font-size: 0.8rem;
+      color: #999;
+      margin-top: 0.5rem;
+    }
+
+    /* Card time editor */
+    .card-time-editor {
+      margin: -0.25rem 0 0.75rem;
+      padding: 0.75rem;
+      border: 1px solid rgba(74, 144, 226, 0.22);
+      border-radius: 10px;
+      background: #f8fafc;
+      position: relative;
+    }
+    .card-time-editor::before {
+      content: "";
+      position: absolute;
+      top: -8px;
+      right: 3.25rem;
+      width: 0;
+      height: 0;
+      border-left: 8px solid transparent;
+      border-right: 8px solid transparent;
+      border-bottom: 8px solid rgba(74, 144, 226, 0.22);
+    }
+    .card-time-editor::after {
+      content: "";
+      position: absolute;
+      top: -7px;
+      right: 3.25rem;
+      width: 0;
+      height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-bottom: 7px solid #f8fafc;
+    }
+    .card-time-editor-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .card-time-editor-title {
+      font-weight: 600;
+      color: #555;
+    }
+    .card-time-editor-zone {
+      display: block;
+      margin-top: 0.15rem;
+      color: #777;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 20rem;
+    }
+    .card-time-editor-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-time-editor-close,
+    .card-time-editor-now {
+      border: 1px solid rgba(0, 0, 0, 0.14);
+      background: #fff;
+      border-radius: 999px;
+      padding: 0.35rem 0.65rem;
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .card-time-editor-now {
+      border-color: rgba(74, 144, 226, 0.35);
+      color: #2b6cb0;
+      background: rgba(74, 144, 226, 0.08);
+    }
+    @media (hover: hover) {
+      .card-time-editor-close:hover {
+        background: rgba(0, 0, 0, 0.04);
+      }
+      .card-time-editor-now:hover {
+        background: rgba(74, 144, 226, 0.12);
+      }
+    }
+    .card-time-editor-close:focus-visible,
+    .card-time-editor-now:focus-visible {
+      outline: 2px solid rgba(74, 144, 226, 0.55);
+      outline-offset: 3px;
+    }
+    .card-time-editor-input {
+      width: 100%;
+      margin-top: 0.6rem;
+      padding: 0.55rem 0.6rem;
+      border: 1px solid rgba(0, 0, 0, 0.18);
+      border-radius: 8px;
+      font-size: 1rem;
+      background: #fff;
+    }
+    .card-time-editor-input:focus-visible {
+      outline: 2px solid rgba(74, 144, 226, 0.55);
+      outline-offset: 3px;
+      border-color: rgba(74, 144, 226, 0.35);
+    }
+    .card-time-editor-note {
+      margin-top: 0.5rem;
+      color: #666;
+      font-size: 0.85rem;
+    }
+
+    /* Map section */
+    .map-section {
+      margin: 1rem 0;
+      border-top: 1px solid #ccc;
+      padding-top: 1rem;
+    }
+    .zones-section {
+      margin: 1.5rem 0;
+    }
+    .section-title {
+      font-size: 0.85rem;
+      color: #888;
+      padding: 0.5rem 0;
+    }
+    #world-map {
+      margin-top: 0.75rem;
+      width: 100%;
+      display: block;
+      height: auto;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      cursor: grab;
+      touch-action: pan-y;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .app.map-dragging #world-map {
+      cursor: grabbing;
+    }
+
+    /* Footer */
+    .iso-display {
+      font-size: 0.8rem;
+      color: #666;
+      margin-top: 1.5rem;
+      padding-top: 1rem;
+      border-top: 1px solid #ccc;
+    }
+    .iso-display .iso-label {
+      display: inline-block;
+      width: 3.5rem;
+      color: #888;
+    }
+    .iso-display .iso-value {
+      font-family: ui-monospace, monospace;
+    }
+    .iso-display div {
+      margin-bottom: 0.25rem;
+    }
+
+    /* Real map styling */
+    :root {
+      --map-ocean: #b7d7ed;
+      --map-land: #9ab88a;
+      --map-land-stroke: #6f8a63;
+      --map-night: rgba(14, 18, 32, 0.48);
+      --map-night-edge: rgba(50, 70, 110, 0.7);
+      --map-grid: rgba(40, 60, 80, 0.18);
+    }
+    #ocean {
+      fill: var(--map-ocean);
+    }
+    #continents path {
+      fill: var(--map-land) !important;
+      stroke: var(--map-land-stroke) !important;
+      stroke-width: 0.35;
+      fill-rule: evenodd;
+      opacity: 0.95;
+    }
+    #grid line {
+      stroke: var(--map-grid);
+    }
+    #day-night-terminator {
+      fill: var(--map-night);
+      stroke: none;
+    }
+    #day-night-edge {
+      fill: none;
+      stroke: var(--map-night-edge);
+      stroke-width: 1.2;
+      stroke-linejoin: round;
+      stroke-linecap: butt;
+    }
+    #timezone-markers .marker-halo {
+      opacity: 0.28;
+    }
+    #timezone-markers .marker-dot {
+      paint-order: stroke;
+    }
+    #timezone-labels text {
+      font-size: 12px;
+      fill: #f7fbff;
+      stroke: rgba(0, 0, 0, 0.6);
+      stroke-width: 2.5;
+      paint-order: stroke;
+      text-anchor: start;
+      pointer-events: none;
+    }
+    #timezone-tooltip text {
+      font-size: 0.85rem;
+      fill: #1a1a1a;
+      pointer-events: none;
+    }
+    #timezone-tooltip rect {
+      fill: rgba(255, 255, 255, 0.9);
+      stroke: rgba(0, 0, 0, 0.15);
+      stroke-width: 1;
+    }
+  </style>
+</head>
+<body>
+	  <div class="app">
+	  <h1><a href="/time">TimeSlider</a></h1>
+
+	  <div class="slider-reticule" id="slider-reticule" aria-hidden="true"></div>
+
+	  <div class="zones-section">
+	    <div id="zones-container"></div>
+
+    <form class="add-zone" id="zone-form">
+      <input type="text" id="zone-input" placeholder="Add zone, e.g. Europe/London" list="timezone-list" />
+      <datalist id="timezone-list"></datalist>
+      <button type="submit">Add</button>
+    </form>
+    <div class="feedback" id="zone-feedback" aria-live="polite"></div>
+  </div>
+
+  <div class="map-section">
+    <!-- <div class="section-title">Map</div> -->
+    <svg id="world-map" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid meet">
+      <!-- Ocean background -->
+      <rect id="ocean" x="0" y="0" width="800" height="400" fill="#b3d9f2"/>
+
+      <!-- Equirectangular base (shifted) -->
+      <g id="earth-wrap">
+        <!-- Equirectangular land data -->
+                  <g id="continents">
+        <path d="M267.62 377.87 L266.96 379 L266.31 380 L261.65 379.7 L256.69 379.83 L253.91 379.09 L253.91 379 L252.69 378.35 L257.69 378.43 L262.48 378.65 L264.14 377.74 L265.31 376.95 L267.62 377.87 Z M46.2 376.66 L41.94 376.96 L39.02 376.18 L37.72 375.4 L37.63 375.27 L36.19 374.66 L36.19 374.66 L37.54 373.83 L41.68 374.18 L43.9 374.87 L45.59 375.66 L46.2 376.66 Z M299.66 373.44 L302.4 374.4 L303.36 375.75 L303.62 376.7 L303.7 377.84 L300.27 378.53 L296.65 379.1 L292.47 379.62 L287.82 380.06 L282.55 379.93 L279.63 379.19 L280.03 378.27 L284.77 377.66 L286.69 376.92 L288.08 375.96 L289.08 375.14 L290.43 374.35 L291.87 373.44 L291.87 373.44 L293 373.44 L296.3 372.96 L299.66 373.44 Z M130.64 363.34 L133.51 363.68 L136.17 363.29 L134.91 364.08 L132.82 364.64 L129.73 364.47 L127.51 363.68 L127.51 363.68 L127.99 362.94 L130.64 363.34 Z M120.98 363.29 L124.37 364.16 L123.07 364.08 L120.2 363.86 L117.15 363.25 L117.15 363.25 L118.76 362.77 L120.98 363.29 Z M180.04 359.85 L182.48 360.16 L184.92 359.9 L186.22 361.16 L184.48 360.98 L181.78 361.07 L179.04 360.98 L176.04 361.11 L173.77 360.68 L172.6 359.76 L172.6 359.76 L173.99 359.37 L176.82 359.68 L180.04 359.85 Z M247.89 357.68 L248.15 358.68 L247.76 359.55 L247.15 360.38 L244.53 360.68 L242.05 361.12 L239.14 361.08 L240.23 360.21 L237.61 360.51 L235.13 360.81 L233.44 360.16 L233.31 359.25 L235.74 358.38 L235.74 358.38 L237.27 358.12 L239.83 358.2 L240.49 357.07 L240.62 356.24 L240.57 354.46 L241.84 353.41 L243.88 353.06 L245.06 353.89 L245.58 354.72 L246.54 355.72 L247.28 356.68 L247.89 357.68 Z M269.75 342.56 L268.79 343.04 L267.13 342.69 L265.31 342.91 L263.78 343.43 L262.17 344 L261.08 344.65 L260.78 345.52 L260.91 346.35 L261.96 347.09 L260.43 347.61 L258.34 347.79 L257.12 348.53 L255.82 349.22 L254.43 350.18 L254.08 351.01 L254.86 351.92 L256.04 352.62 L257.86 353.14 L259.56 353.84 L260.48 354.71 L260.95 355.54 L261.61 356.41 L262.65 357.15 L263.3 357.98 L263.61 360.02 L264.26 360.85 L264.44 361.72 L265.13 362.59 L264.83 363.77 L263.61 364.68 L262.3 365.42 L259.34 365.73 L258.34 366.51 L256.99 367.25 L253.64 368.08 L250.68 368.43 L247.9 368.91 L244.89 369.38 L243.11 370.3 L239.54 370.39 L235.62 370.3 L232.1 370.47 L228.35 370.47 L229.05 371.34 L232.45 371.74 L234.93 372.35 L236.32 373.13 L233.84 373.83 L230.01 373.61 L226.83 374.17 L226.7 375.09 L226.61 375.96 L229.23 376.7 L229.7 377.53 L232.53 378.35 L237.23 378.7 L241.24 379.31 L244.42 380.01 L248.46 380.71 L253.99 381.05 L259.43 381.66 L263.22 382.32 L267.35 383.06 L269.53 384.1 L270.62 384.93 L273.32 384.15 L276.97 383.49 L280.84 382.8 L285.46 382.23 L289.42 381.62 L294.95 381.58 L300.39 381.88 L304.87 382.4 L306.31 381.45 L309.4 380.79 L315.01 380.75 L319.41 380.27 L323.59 379.79 L328.2 379.49 L333.12 379.09 L336.56 378.53 L334.99 377.74 L334.03 376.96 L334.03 376.13 L329.72 376.22 L325.15 376.57 L320.8 376.57 L320.19 375.74 L320.5 374.09 L321.5 373.61 L324.67 373.09 L328.42 372.56 L331.12 371.91 L333.81 371.26 L335.82 370.39 L338.86 369.99 L341.87 369.69 L343.39 369.52 L346.83 369.43 L350.09 369.12 L352.83 368.69 L355.53 368.17 L357.97 367.64 L361.06 366.95 L363.02 366.21 L365.11 365.55 L365.76 364.68 L363.41 364.16 L364.19 363.24 L365.67 362.55 L367.98 362.11 L370.42 361.59 L372.68 360.89 L374.42 360.02 L375.51 358.98 L377.12 358.37 L379.78 358.5 L380.86 359.24 L383.52 359.33 L383.61 358.5 L384.74 357.63 L387.13 357.85 L387.7 358.67 L390.35 358.8 L393.22 358.41 L396.01 358.15 L398.53 358.28 L399.49 359.19 L401.93 358.45 L404.19 358.06 L406.72 357.76 L409.2 357.45 L411.46 356.93 L413.94 356.58 L415.86 356.1 L417.21 355.32 L418.86 355.89 L421.17 355.58 L422.78 356.63 L424.04 357.41 L426.56 356.97 L427.57 356.1 L429.83 355.49 L432.74 355.62 L433.62 356.45 L435.44 355.62 L437.84 355.36 L440.45 355.28 L442.8 355.32 L445.28 355.58 L447.67 355.71 L448.72 356.45 L450.15 357.1 L452.59 356.71 L455.2 356.63 L457.73 356.63 L460.21 356.58 L462.43 356.28 L464.78 356.02 L466.74 355.41 L468.83 355.01 L471.09 354.8 L472.79 354.19 L474.01 352.97 L475.27 352.23 L477.57 352.58 L478.44 353.36 L480.36 353.88 L482.67 353.71 L484.23 354.49 L485.89 355.06 L488.15 354.54 L488.93 353.58 L490.94 353.19 L493.24 352.45 L495.42 352.14 L498.03 351.71 L499.77 351.23 L501.6 350.7 L503.34 350.22 L505.43 350.49 L507.43 349.7 L508.87 349.09 L510.96 349.14 L512.79 348.61 L513.22 347.83 L515.09 347.22 L516.92 346.78 L519.14 346.44 L521.19 346.26 L523.14 346.39 L525.23 346.61 L527.02 347.22 L527.24 348.18 L529.19 348.92 L530.54 349.53 L533.2 349.79 L534.68 350.4 L536.51 351.01 L538.64 351.14 L540.42 350.7 L542.34 349.79 L544.43 350.27 L546.6 350.53 L548.69 350.79 L550.87 350.97 L553.09 350.97 L554.92 353.27 L554.83 353.84 L554.57 354.84 L552.44 355.41 L550.69 356.23 L551 357.1 L553.48 357.06 L553.18 357.93 L552.04 358.76 L551 359.67 L552.7 360.37 L555.27 360.59 L557.83 360.2 L559.05 359.33 L559.79 358.5 L561.01 357.8 L562.4 357.15 L562.97 356.36 L564.14 355.28 L565.54 355.06 L568.06 354.97 L570.28 354.71 L572.54 354.36 L573.63 353.49 L574.29 352.66 L575.81 351.84 L577.98 351.27 L579.86 350.83 L581.08 350.09 L582.34 349.7 L583.95 349.35 L586.17 349.57 L588.17 349.35 L590.35 349.09 L592.78 349.22 L594.39 348.61 L595.53 347.13 L596.35 347.74 L597.4 348.79 L599.27 349.22 L601.4 349.4 L603.53 349.14 L605.8 349.31 L607.89 349.35 L609.28 349.14 L611.15 349.27 L612.85 349.75 L614.85 349.44 L617.24 349.44 L619.29 349.14 L621.6 349.44 L623.08 348.7 L624.21 347.96 L625.73 347.35 L628.52 345.7 L629.95 346 L631.65 346.61 L633.13 347.39 L635.96 348.74 L638.14 348.79 L640.18 348.79 L642.57 348.53 L644.97 348.22 L646.8 347.61 L648.32 346.96 L650.8 346.87 L652.45 346.39 L654.2 346.83 L655.33 347.53 L656.89 348.22 L659.33 348.13 L660.85 348.7 L663.51 349.27 L666.3 349.48 L668.6 349.31 L670.34 348.61 L671.82 347.92 L673.83 347.74 L675.83 348.05 L678.13 348.27 L680.22 347.92 L682.23 347.92 L684.18 348.13 L686.23 348.35 L688.23 347.96 L690.63 347.61 L692.89 347.53 L695.41 347.53 L697.46 347.31 L699.46 347.13 L700.07 346.04 L700.16 345.13 L701.55 345.74 L701.94 346.74 L702.68 347.66 L703.6 348.4 L705.47 348.79 L707.99 348.66 L710.91 348.61 L712.91 348.48 L715.83 348.48 L717.92 348.44 L720.83 348.53 L723.31 348.7 L724.88 349.4 L724.44 350.22 L725.88 350.88 L728.27 351.4 L730.75 351.97 L733.63 352.36 L736.63 352.71 L738.89 353.06 L741.42 353.1 L742.85 352.36 L744.81 352.97 L746.51 353.66 L748.47 354.19 L751.17 354.41 L753.74 354.67 L754.82 355.54 L757.35 356.06 L759.05 356.84 L761.53 357.19 L764.09 357.15 L766.49 357.28 L769.14 357.24 L771.8 357.41 L774.28 357.71 L776.59 358.24 L778.89 358.67 L780.46 359.33 L780.2 360.2 L779.02 360.98 L778.02 361.98 L777.24 362.77 L776.19 363.68 L773.28 364.03 L771.97 364.81 L769.1 365.29 L768.1 366.16 L766.58 366.99 L764.96 367.69 L764.05 368.6 L763.48 369.43 L763.27 370.43 L763.31 371.26 L764.57 372.13 L765.05 372.96 L766.1 373.74 L770.23 374.04 L771.1 375 L767.1 375.35 L763.7 375.83 L759.48 375.92 L757.61 377.18 L757.22 378.22 L756.26 379.05 L755.08 379.88 L758.04 380.62 L759.18 381.53 L761.09 382.36 L763.79 383.1 L766.88 383.8 L770.23 384.49 L775.32 385.19 L776.46 386.28 L782.85 386.76 L783.28 386.93 L784.94 387.59 L791.08 387.02 L796.17 387.72 L800 388.25 L800 400 L0 400 L0 388.25 L0.13 388.27 L2.09 386.98 L6.1 387.67 L6.35 387.6 L6.97 387.41 L7.72 387.18 L8.38 386.98 L8.7 386.89 L9.04 386.89 L9.27 386.93 L12.48 387.85 L15.3 386.93 L15.8 386.8 L22.33 386.41 L24.44 386.93 L25.49 387.19 L28.84 387.93 L35.15 388.5 L40.16 389.2 L48.73 389.72 L55.13 389.11 L64.57 389.55 L69.93 390.24 L75.8 389.59 L81.98 388.98 L82.46 387.93 L73.71 387.85 L66.53 387.32 L64.66 386.45 L58.7 385.97 L59.09 384.97 L59.92 384.06 L60.74 383.23 L60.31 382.32 L56.61 381.71 L54.91 380.92 L51.47 380.23 L56.87 380.36 L62.01 380.01 L65.23 380.75 L69.19 380.1 L72.84 379.27 L74.63 378.53 L73.84 377.61 L70.97 377 L67.71 376.35 L63.14 376.22 L59.13 375.92 L54.82 375.7 L53.39 374.87 L50.51 374.17 L48.77 373.39 L48.08 370.86 L49.17 371.08 L51.17 371.78 L54.82 371.56 L58.35 371.26 L60.18 372.21 L63.7 372 L66.66 371.52 L69.45 370.91 L71.97 370.17 L75.32 369.95 L75.24 369.12 L74.45 368.3 L75.11 367.51 L77.98 367.12 L79.28 367.86 L82.68 367.42 L85.25 366.86 L88.42 366.82 L91.43 366.6 L94.43 366.08 L96.82 365.6 L99.52 365.12 L101.26 365.25 L102.79 365.42 L106.1 365.12 L109.05 365.51 L112.1 365.47 L115.02 365.16 L118.02 365.38 L121.33 365.6 L124.42 365.51 L127.64 365.55 L130.95 365.6 L133.99 365.51 L136.26 364.86 L138.96 364.51 L141.74 364.99 L144.4 364.59 L146.79 363.81 L148.23 364.51 L149.01 365.29 L150.45 366.03 L152.75 365.38 L155.41 366.21 L158.41 366.47 L160.98 367.08 L164.11 366.95 L166.94 366.55 L170.29 366.64 L173.3 366.95 L176.34 367.34 L177.52 366.38 L176.08 365.64 L174.99 364.86 L172.12 364.68 L170.86 363.85 L170.38 363.03 L169.6 361.37 L171.29 361.68 L174.21 361.81 L177.08 361.68 L179.69 362.03 L181.96 362.68 L182.92 363.46 L185.92 363.59 L188.79 363.29 L191.84 362.85 L194.58 362.59 L196.84 363.11 L199.8 362.94 L201.72 361.24 L203.5 362.24 L206.07 362.64 L208.86 362.42 L210.68 363.29 L213.6 363.38 L216.3 363.64 L218.95 364.12 L220.69 363.29 L221.56 362.5 L223.78 363.38 L226.83 363.16 L229.09 363.64 L230.62 364.38 L233.58 364.16 L235.88 363.68 L238.15 363.11 L240.85 362.81 L243.98 362.55 L246.81 362.24 L248.99 361.76 L250.29 361.07 L250.81 360.11 L250.55 359.19 L249.86 358.32 L249.07 357.45 L248.38 356.58 L247.81 355.8 L247.68 354.93 L247.9 354.06 L248.94 353.23 L249.81 352.31 L250.16 351.44 L249.73 350.49 L249.46 349.62 L250.55 348.61 L251.77 347.96 L253.21 347.13 L254.73 346.44 L256.51 345.78 L257.39 344.83 L258.6 344.22 L260 343.65 L262.13 343.52 L263.52 342.82 L265.09 342.39 L266.92 342.13 L268.53 341.56 L269.79 340.86 L271.53 340.6 L272.84 341.17 L272.01 341.91 L269.75 342.56 Z M249.44 319.67 L252.33 321 L255.44 321.56 L254.44 322.67 L252.33 322.78 L251.2 321.99 L250.46 322.89 L248.56 323.58 L246.15 323.33 L244.54 322.66 L242.21 322.34 L239.41 321.1 L237.14 319.91 L234.08 317.42 L235.92 317.88 L239.04 319.37 L241.98 320.17 L243.13 319.15 L243.85 317.62 L245.9 316.71 L247.48 316.97 L247.48 316.97 L248.33 318 L249.44 319.67 Z M269.89 313.56 L271.67 314.56 L271 315.33 L268 316 L267 315.22 L265.11 316.22 L264 315.22 L266.67 313.89 L268.56 314.44 L269.89 313.56 Z M556.18 310.47 L552.77 310.61 L552.71 309.43 L553.04 308.51 L553.19 308.06 L554.62 308.76 L556.72 309.03 L556.8 309.46 L556.18 310.47 Z M723.11 290.65 L725.25 291.42 L726.46 291.11 L728.2 290.69 L729.53 290.83 L729.69 293.47 L728.93 294.24 L728.7 296.03 L727.92 295.42 L726.38 296.97 L725.92 296.85 L724.55 296.78 L723.18 294.88 L722.88 293.41 L721.6 291.47 L721.65 290.45 L723.11 290.65 Z M784.49 290.93 L784.99 291.85 L786.57 290.95 L787.22 291.89 L787.22 292.82 L786.39 293.85 L784.94 295.49 L783.8 296.38 L784.62 297.45 L782.91 297.48 L781.01 298.32 L780.41 299.77 L779.15 302.02 L777.4 303.01 L776.29 303.65 L774.25 303.6 L772.81 302.87 L770.39 302.71 L770.02 301.89 L771.21 300.25 L774.01 298.05 L775.44 297.64 L777.04 296.79 L778.94 295.63 L780.28 294.47 L781.27 292.82 L782.11 292.25 L782.44 291.01 L784 289.99 L784.49 290.93 Z M788.03 280.35 L789.64 282.69 L789.68 281.17 L790.69 281.78 L791.02 283.46 L792.81 284.18 L794.31 284.36 L795.58 283.51 L796.7 283.77 L796.17 285.74 L795.49 287.04 L793.79 286.99 L793.2 287.67 L793.41 288.62 L793.08 289.04 L792.24 290.23 L791.14 291.75 L789.42 292.64 L789.04 292.06 L788.11 291.74 L789.39 289.91 L788.67 288.69 L786.28 287.8 L786.34 286.99 L787.94 286.22 L788.32 284.51 L788.22 283.07 L787.32 281.58 L787.38 281.19 L786.31 280.27 L784.56 278.3 L783.64 276.73 L784.46 276.56 L785.67 277.79 L787.4 278.37 L788.03 280.35 Z M771.38 249.24 L770.53 249.78 L769.31 249.18 L767.72 248.18 L766.29 247 L764.82 245.43 L764.51 244.68 L765.47 244.71 L766.71 245.47 L767.69 246.22 L768.4 246.84 L770.22 248.22 L771.38 249.24 Z M796.39 238.53 L797.15 239.17 L796.78 240.33 L795.41 240.64 L794.18 240.37 L793.97 239.39 L794.82 238.62 L795.83 238.9 L796.39 238.53 Z M798.59 237.34 L797.17 237.8 L796.88 236.98 L797.99 236.52 L798.7 236.4 L800 235.7 L800 236.79 L798.59 237.34 Z M0.18 236.67 L0 236.79 L0 235.7 L0.46 235.6 L0.18 236.67 Z M772.99 236.59 L772.26 236.88 L771.51 235.91 L771.59 235.32 L772.99 236.59 Z M771.35 233.19 L771.71 234.98 L771.11 234.7 L770.65 234.82 L770.33 234.21 L770.29 232.5 L771.35 233.19 Z M511.24 230.12 L511.59 232.8 L512.17 233.84 L511.95 234.9 L511.56 235.56 L510.8 234.25 L510.38 234.91 L510.81 236.56 L510.61 237.5 L510 238.01 L509.86 239.9 L508.98 242.49 L507.89 245.55 L506.51 249.76 L505.66 252.85 L504.66 255.43 L502.85 255.95 L500.91 256.89 L499.63 256.32 L497.87 255.53 L497.25 254.36 L497.11 252.39 L496.32 250.62 L496.12 249.02 L496.52 247.41 L497.54 247.03 L497.55 246.29 L498.61 244.61 L498.81 243.19 L498.29 242.14 L497.87 240.74 L497.7 238.69 L498.47 237.45 L498.77 236.04 L499.88 235.95 L501.12 235.5 L501.94 235.1 L502.92 235.07 L504.18 233.8 L506.01 232.43 L506.68 231.31 L506.38 230.36 L507.32 230.63 L508.54 229.09 L508.59 227.75 L509.32 226.76 L510.1 227.71 L510.69 228.66 L511.24 230.12 Z M719.03 230.59 L719.83 232.33 L721.25 231.49 L721.99 232.43 L723.05 233.3 L722.83 234.28 L723.3 236.19 L723.64 237.3 L724.2 237.57 L724.8 239.47 L724.59 240.62 L725.31 242.13 L727.71 243.29 L729.28 244.35 L730.77 245.31 L730.48 245.85 L731.75 247.25 L732.62 249.65 L733.51 249.16 L734.41 250.12 L734.95 249.78 L735.33 252.14 L736.91 253.5 L737.94 254.35 L739.68 256.15 L740.3 257.94 L740.36 259.2 L740.21 260.58 L741.27 262.47 L741.14 264.43 L740.75 265.46 L740.15 267.44 L740.2 268.72 L739.76 270.31 L738.78 272.33 L737.13 273.43 L736.32 275.15 L735.58 276.25 L734.92 278.16 L734.06 279.27 L733.5 280.93 L733.21 282.46 L733.33 283.17 L732.05 283.94 L729.57 284.02 L727.51 284.93 L726.49 285.79 L725.15 286.75 L723.31 285.76 L721.95 285.37 L722.29 284.21 L721.08 284.63 L719.13 286.24 L717.21 285.64 L715.95 285.29 L714.68 285.13 L712.53 284.49 L711.09 283.12 L710.68 281.43 L710.16 280.31 L709.07 279.41 L706.93 279.14 L707.67 278.06 L707.13 276.41 L706.04 277.95 L704.07 278.36 L705.23 277.13 L705.56 275.85 L706.42 274.76 L706.25 273.11 L704.44 275.01 L703.05 275.77 L702.2 277.53 L700.46 276.62 L700.53 275.44 L699.14 273.83 L697.97 273 L698.39 272.48 L695.54 271.14 L693.97 271.07 L691.84 269.99 L687.86 270.2 L684.98 271 L682.45 271.74 L680.33 271.59 L677.97 272.73 L676.05 273.24 L675.62 274.41 L674.8 275.31 L672.91 275.37 L671.52 275.56 L669.55 275.16 L667.96 275.4 L666.43 275.5 L665.11 276.69 L664.46 276.59 L663.35 277.22 L662.28 277.92 L660.66 277.83 L659.17 277.83 L656.81 276.41 L655.62 275.99 L655.66 274.72 L656.77 274.42 L657.14 273.91 L657.07 273.11 L657.34 271.57 L657.09 270.25 L655.91 268 L655.55 266.73 L655.64 265.47 L654.76 264.02 L654.7 263.37 L653.72 262.48 L653.44 260.74 L652.17 258.98 L651.86 258.04 L652.84 259 L652.09 256.94 L653.19 257.58 L653.85 258.44 L653.81 257.3 L652.71 255.55 L652.5 254.85 L651.99 254.19 L652.23 252.9 L652.68 252.36 L652.99 251.24 L652.75 249.95 L653.67 248.35 L653.83 250.04 L654.77 248.51 L656.58 247.77 L657.66 246.82 L659.36 246 L660.37 245.83 L660.98 246.1 L662.73 245.28 L664.08 245.03 L664.42 244.54 L665.01 244.34 L666.23 244.39 L668.57 243.74 L669.78 242.76 L670.34 241.57 L671.65 240.44 L671.75 239.55 L671.81 238.34 L673.36 236.46 L674.3 238.37 L675.24 237.93 L674.45 236.88 L675.15 235.8 L676.13 236.28 L676.4 234.59 L677.61 233.5 L678.15 232.62 L679.27 232.24 L679.3 231.62 L680.28 231.88 L680.32 231.32 L681.29 231.01 L682.37 230.71 L684.01 231.73 L685.24 233.04 L686.63 233.06 L688.05 233.27 L687.58 232.05 L688.64 230.26 L689.64 229.68 L689.3 229.13 L690.26 227.86 L691.61 227.07 L692.74 227.34 L694.61 226.92 L694.57 225.78 L692.94 225.05 L694.13 224.73 L695.6 225.28 L696.78 226.19 L698.65 226.76 L699.29 226.54 L700.66 227.22 L701.96 226.58 L702.8 226.78 L703.32 226.35 L704.34 227.45 L703.74 228.64 L702.9 229.54 L702.14 229.61 L702.39 230.5 L701.74 231.61 L700.95 232.7 L701.11 233.33 L702.88 234.56 L704.59 235.27 L705.73 236.03 L707.34 237.35 L707.97 237.35 L709.13 237.92 L709.47 238.6 L711.59 239.36 L713.06 238.6 L713.49 237.4 L713.94 236.42 L714.22 235.2 L714.89 233.43 L714.59 232.36 L714.75 231.71 L714.49 230.44 L714.78 228.77 L715.21 228.31 L714.86 227.57 L715.4 226.39 L715.82 225.17 L715.87 224.54 L716.7 223.71 L717.33 224.79 L717.48 226.19 L718.04 226.46 L718.13 227.39 L718.94 228.52 L719.1 229.78 L719.03 230.59 Z M760.26 223.29 L760.89 224.06 L759.33 224.04 L758.49 222.68 L759.82 223.21 L760.26 223.29 Z M668.26 222.75 L667.32 222.8 L664.37 221.24 L666.45 220.8 L667.61 221.48 L668.39 222.15 L668.26 222.75 Z M757.45 221.94 L756.58 221.99 L755.22 221.76 L754.76 221.42 L754.9 220.54 L756.36 220.89 L757.09 221.36 L757.45 221.94 Z M759.29 221.33 L758.95 221.74 L757.31 219.82 L756.84 218.49 L757.6 218.49 L758.4 220.27 L759.29 221.33 Z M676.52 222.53 L674.62 223.02 L674.36 222.76 L674.56 222 L675.51 220.64 L677.71 219.76 L677.97 219.24 L679.88 218.74 L681.43 218.66 L682.13 218.39 L682.97 218.66 L682.15 219.26 L679.84 220.24 L677.97 220.87 L676.52 222.53 Z M662 217.99 L662.8 218.58 L664.17 218.4 L664.73 219.35 L662.16 219.79 L660.62 220.09 L659.42 220.07 L660.19 218.79 L661.4 218.78 L662 217.99 Z M673.12 217.99 L672.79 219.22 L669.45 219.85 L666.5 219.58 L666.49 218.77 L668.26 218.3 L669.65 218.97 L671.13 218.8 L673.12 217.99 Z M755.28 218.53 L755.37 218.97 L753.63 218.03 L752.41 217.23 L751.58 216.49 L751.91 216.27 L752.93 216.8 L754.76 217.82 L755.28 218.53 Z M750.09 216.33 L749.64 216.46 L748.67 215.95 L747.76 215.04 L747.87 214.67 L749.2 215.6 L750.09 216.33 Z M641.39 215.06 L645.64 215.28 L646.13 214.37 L650.26 215.44 L651.06 216.88 L654.4 217.28 L657.12 218.6 L654.59 219.45 L652.14 218.55 L650.13 218.61 L647.83 218.45 L645.75 218.05 L643.17 217.2 L641.54 216.98 L640.62 217.26 L636.56 216.34 L636.18 215.39 L634.15 215.23 L635.67 213.1 L638.37 213.23 L640.16 214.1 L641.08 214.27 L641.39 215.06 Z M699.39 213.81 L698.24 215.32 L698.03 213.65 L698.42 212.85 L698.89 212.1 L699.39 212.75 L699.39 213.81 Z M746.4 215.16 L745.78 215.38 L744.82 214.52 L743.84 213.11 L743.36 211.42 L743.67 211.21 L743.91 211.87 L744.58 212.37 L745.66 213.78 L746.71 214.53 L746.4 215.16 Z M737.74 212.17 L736.58 212.36 L736.23 212.98 L735.01 213.52 L733.87 214.04 L732.69 214.04 L730.87 213.39 L729.6 212.77 L729.78 212.08 L731.77 212.41 L732.99 212.23 L733.33 211.17 L733.64 211.11 L733.86 212.29 L735.13 212.12 L735.75 211.36 L737 210.57 L736.75 209.26 L738.08 209.22 L738.53 209.58 L738.49 210.82 L737.74 212.17 Z M682.78 207.69 L681.94 208.42 L680.41 208.02 L679.98 207.06 L682.22 206.95 L682.78 207.69 Z M689.94 206.88 L690.74 208.57 L688.87 207.66 L687.01 207.47 L685.76 207.62 L684.22 207.54 L684.75 206.32 L687.49 206.23 L689.94 206.88 Z M740.31 210 L739.62 210.59 L739.2 209.28 L738.68 208.42 L737.67 207.69 L736.41 206.75 L734.8 206.09 L735.42 205.56 L736.62 206.18 L737.38 206.67 L738.31 207.2 L739.2 208.13 L740.04 208.84 L740.31 210 Z M698.1 202.56 L698.72 206.15 L701.02 207.48 L702.87 205.13 L705.42 203.79 L707.4 203.78 L709.3 204.56 L710.95 205.35 L713.33 205.78 L717.19 207.31 L721.3 208.58 L722.83 209.72 L724.07 210.84 L724.4 212.15 L728.11 213.52 L728.65 214.7 L726.6 214.94 L727.09 216.42 L729.08 217.88 L730.52 220.23 L731.79 220.16 L731.7 221.14 L733.42 221.52 L732.75 221.94 L735.11 222.87 L734.87 223.52 L733.4 223.67 L732.85 223.1 L730.94 222.85 L728.7 222.51 L726.97 221.09 L725.71 219.87 L724.55 217.93 L721.65 216.96 L719.77 217.59 L718.41 218.32 L718.7 219.96 L716.95 220.73 L715.71 220.35 L713.41 220.26 L711.43 218.44 L709.17 217.99 L708.63 218.62 L705.81 218.69 L706.75 216.88 L708.15 216.27 L707.57 213.85 L706.51 211.99 L702.2 210.1 L700.37 209.92 L697.03 207.86 L696.37 208.94 L695.52 209.14 L695.02 208.33 L695.01 207.36 L693.31 206.27 L695.7 205.47 L697.29 205.51 L697.1 204.92 L693.85 204.92 L692.97 203.59 L690.98 203.18 L690.04 202.08 L693.04 201.55 L694.18 200.82 L697.75 201.73 L698.1 202.56 Z M678.31 196.84 L676.53 199.05 L674.86 199.48 L672.72 199.04 L669.01 199.15 L667.07 199.47 L666.76 201.15 L668.75 203.13 L669.95 202.12 L674.09 201.37 L673.91 202.39 L672.94 202.07 L671.97 203.37 L670.02 204.23 L672.12 207.08 L671.72 207.84 L673.71 210.41 L673.69 211.87 L672.51 212.52 L671.64 211.74 L672.71 209.92 L670.53 210.78 L669.98 210.17 L670.26 209.31 L668.66 208 L668.83 205.84 L667.35 206.51 L667.53 209.11 L667.62 212.28 L666.21 212.61 L665.26 211.96 L665.9 209.91 L665.55 207.77 L664.62 207.75 L663.93 206.23 L664.85 204.77 L665.16 203.01 L666.28 199.66 L666.75 198.74 L668.64 197.09 L670.37 197.75 L673.17 198.06 L675.73 197.96 L677.92 196.35 L678.31 196.84 Z M685.97 197.48 L685.86 199.43 L684.71 199.21 L684.37 200.56 L685.29 201.73 L684.67 202 L683.77 200.59 L683.11 197.75 L683.56 195.98 L684.29 195.17 L684.45 196.38 L685.77 196.58 L685.97 197.48 Z M635.15 213.01 L632.69 213.05 L630.82 211.19 L627.97 209.38 L627.01 208.03 L625.33 206.22 L624.23 204.56 L622.54 201.45 L620.59 199.59 L619.93 197.68 L619.11 195.95 L617.11 194.55 L615.95 192.65 L614.28 191.4 L611.96 188.95 L611.76 187.82 L613.19 187.91 L616.63 188.34 L618.6 190.51 L620.32 192.02 L621.54 192.95 L623.65 195.33 L625.91 195.37 L627.77 196.89 L629.06 198.75 L630.75 199.77 L629.86 201.58 L631.14 202.35 L631.93 202.41 L632.31 203.96 L633.08 205.2 L634.72 205.4 L635.8 206.8 L635.24 209.57 L635.15 213.01 Z M661.95 195.94 L664.44 198 L661.8 198.26 L661.06 199.77 L661.16 201.79 L659.02 203.31 L658.96 205.52 L658.11 208.92 L657.78 208.13 L655.26 209.13 L654.37 207.77 L652.79 207.64 L651.68 206.93 L649.04 207.73 L648.23 206.65 L646.77 206.78 L644.94 206.52 L644.6 203.54 L643.49 202.92 L642.43 201.02 L642.12 199.08 L642.38 197.02 L643.7 195.54 L645.32 196.3 L647.04 195.89 L647.49 194.01 L648.44 193.59 L651.1 193.11 L652.7 191.35 L653.79 189.94 L654.67 189.11 L656.56 187.89 L658.27 186.35 L659.39 184.61 L660.29 184.6 L661.43 185.73 L661.53 186.69 L662.99 187.31 L664.85 187.98 L664.69 188.85 L663.2 188.96 L663.6 190.05 L661.96 190.81 L660.7 192.81 L662.33 194.92 L661.95 195.94 Z M680.84 181.3 L681.06 182.78 L681.19 184.02 L680.44 186.06 L679.63 183.79 L678.59 184.92 L679.3 186.56 L678.66 187.6 L676.04 186.31 L675.42 184.7 L676.1 183.64 L674.69 182.59 L673.99 183.51 L672.95 183.43 L671.3 184.67 L670.93 184.02 L671.81 182.14 L673.21 181.52 L674.42 180.68 L675.2 181.69 L676.89 181.08 L677.25 180.09 L678.83 180.03 L678.69 178.31 L680.49 179.36 L680.68 180.48 L680.84 181.3 Z M580.48 186.23 L578.55 186.74 L577.49 184.97 L577.1 181.78 L578.11 178.17 L579.64 179.4 L580.68 180.97 L581.75 183.28 L581.42 185.6 L580.48 186.23 Z M264.59 177.53 L262.73 177.78 L262.33 177.58 L262.98 176.97 L262.93 176.09 L264.21 175.8 L264.68 175.88 L264.59 177.53 Z M675.52 177.16 L674.72 177.89 L674.02 179.29 L673.32 179.95 L671.96 178.41 L672.41 177.82 L672.97 177.2 L673.22 175.82 L674.44 175.69 L674.08 177.18 L675.73 175.04 L675.52 177.16 Z M663.34 179.3 L660.39 181.41 L661.48 179.85 L663.08 178.48 L664.42 176.94 L665.58 174.73 L665.98 176.55 L664.51 177.77 L663.34 179.3 Z M670.85 173.57 L672.19 174.26 L673.6 174.26 L673.56 175.19 L672.53 176.13 L671.12 176.8 L671.04 175.77 L671.2 174.63 L670.85 173.57 Z M678.89 172.97 L679.52 175.45 L677.8 174.86 L677.85 175.61 L678.39 176.98 L677.34 177.48 L677.24 175.92 L676.58 175.8 L676.23 174.45 L677.54 174.63 L677.51 173.79 L676.15 172.09 L678.28 172.14 L678.89 172.97 Z M670.06 170.96 L669.47 172.88 L668.52 171.77 L667.39 170.07 L669.29 170.16 L670.06 170.96 Z M669.6 158.88 L670.97 159.51 L671.66 158.94 L671.86 159.5 L671.5 160.42 L672.26 162.01 L671.67 163.86 L670.36 164.6 L670.01 166.39 L670.51 168.16 L671.69 168.4 L672.67 168.14 L675.45 169.37 L675.23 170.58 L675.96 171.12 L675.73 172.14 L674 171.05 L673.17 169.88 L672.6 170.7 L671.19 169.37 L669.17 169.7 L668.06 169.21 L668.18 168.29 L668.87 167.72 L668.21 167.21 L667.92 168.01 L666.82 166.73 L666.49 165.76 L666.41 163.64 L667.3 164.37 L667.53 160.89 L668.26 158.88 L669.6 158.88 Z M254.24 159.49 L253.67 160.05 L252 160.04 L250.7 160.12 L250.57 159.17 L250.89 158.84 L252.71 158.86 L253.84 159.05 L254.24 159.49 Z M229.11 160.29 L228.43 160.66 L227.19 160.31 L225.92 159.5 L226.18 158.99 L227.12 158.84 L227.62 158.91 L229.12 159.11 L230.3 159.64 L230.67 160.25 L229.11 160.29 Z M238.71 155.84 L240.64 156.19 L240.92 155.81 L242.65 155.82 L243.97 156.39 L244.55 156.34 L244.96 157.13 L246.17 157.08 L246.1 157.74 L247.09 157.82 L248.18 158.64 L247.36 159.54 L246.3 159.06 L245.28 159.15 L244.55 159.05 L244.15 159.45 L243.3 159.59 L242.96 159.05 L242.22 159.37 L241.33 160.89 L240.76 160.54 L240.65 159.9 L239.17 159.52 L238.12 159.68 L236.77 159.52 L235.73 159.93 L234.54 159.24 L234.73 158.52 L236.78 158.83 L238.46 159.01 L239.26 158.51 L238.24 157.55 L238.26 156.7 L236.86 156.36 L237.36 155.74 L238.71 155.84 Z M645.2 158.49 L643.28 159.56 L641.46 158.87 L641.39 156.96 L642.49 155.95 L644.91 155.33 L646.19 155.38 L646.69 156.23 L645.71 157.21 L645.2 158.49 Z M54.35 157.59 L54.03 157.96 L53.47 157.65 L53.54 157.02 L53.17 156.22 L53.28 155.97 L53.67 155.61 L53.51 155.17 L53.64 154.96 L53.81 155 L54.66 155.38 L55.06 155.57 L55.42 155.87 L55.98 156.65 L55.93 156.77 L55.06 157.25 L54.35 157.59 Z M53.16 154.12 L52.41 154.28 L52.03 153.82 L51.77 153.63 L51.75 153.5 L51.97 153.31 L52.76 153.52 L53.34 153.86 L53.16 154.12 Z M51.65 152.94 L51.58 153.18 L50.39 153.12 L50.55 152.85 L51.65 152.94 Z M49.66 152.62 L49.54 152.75 L49.38 152.72 L48.61 152.64 L48.32 152.14 L48.24 152.05 L48.83 151.74 L49.02 151.88 L49.66 152.62 Z M45.9 151.15 L45.64 151.37 L44.89 150.97 L45 150.8 L45.34 150.59 L45.85 150.63 L45.9 151.15 Z M222.93 149.41 L223.82 150.22 L225.89 149.97 L226.68 150.5 L228.56 151.87 L229.95 152.87 L230.68 152.84 L232 153.3 L231.84 153.92 L233.48 154.01 L235.16 154.92 L234.9 155.44 L233.42 155.73 L231.92 155.84 L230.39 155.66 L227.21 155.88 L228.7 154.64 L227.79 154.06 L226.36 153.91 L225.59 153.27 L225.07 152 L223.81 152.09 L221.74 151.49 L221.07 151.03 L218.18 150.68 L217.4 150.25 L218.23 149.7 L216.05 149.58 L214.46 150.74 L213.54 150.77 L213.22 151.31 L212.12 151.55 L211.17 151.34 L212.34 150.66 L212.82 149.85 L213.83 149.36 L214.96 148.93 L216.64 148.71 L217.18 148.47 L219.1 148.63 L220.85 148.65 L222.93 149.41 Z M227.7 147.2 L227.16 147.31 L226.59 146.03 L225.76 145.39 L226.24 143.98 L226.91 144.07 L227.69 145.91 L227.7 147.2 Z M669.28 149.35 L668.33 151.18 L667.16 149.3 L666.9 147.65 L668.21 145.47 L669.99 143.79 L671 144.45 L670.62 145.79 L669.28 149.35 Z M227.07 140.93 L224.64 141.29 L224.49 140.47 L225.53 140.29 L227 140.36 L227.07 140.93 Z M228.89 140.91 L228.51 142.49 L228.1 142.21 L228.13 141.04 L227.14 140.17 L227.13 139.91 L228.89 140.91 Z M699.2 124.11 L699.48 124.87 L698.23 126.22 L697.32 125.51 L696.18 126.02 L695.59 127.32 L694.14 126.69 L694.16 125.64 L695.39 124.31 L696.65 124.57 L697.56 123.63 L699.2 124.11 Z M476.84 120.73 L475.34 121.68 L475.5 122.09 L475.57 122.27 L473.29 123.17 L472.2 122.89 L471.68 121.99 L472.74 121.91 L472.89 121.9 L473.22 121.36 L474.82 121.39 L476.84 120.73 Z M452.67 120.66 L453.88 121.4 L455.61 121.28 L457.26 121.44 L457.21 121.82 L458.42 121.56 L458.14 122.21 L454.94 122.4 L454.97 122.03 L452.26 121.6 L452.67 120.66 Z M434.49 115.04 L433.69 116.79 L434.02 117.48 L433.56 118.62 L431.86 117.79 L430.73 117.55 L427.62 116.42 L427.94 115.27 L430.54 115.48 L432.8 115.24 L434.49 115.04 Z M420.47 108.42 L421.8 110 L421.49 112.94 L420.48 112.8 L419.57 113.54 L418.73 112.95 L418.64 110.27 L418.13 109 L419.36 109.11 L420.47 108.42 Z M713.28 117.46 L712.44 119.24 L712.83 120.35 L711.67 121.92 L708.83 122.96 L704.93 123.1 L701.76 125.63 L700.27 124.78 L700.18 123.12 L696.31 123.61 L693.68 124.66 L691.08 124.7 L693.33 126.33 L691.85 130.11 L690.41 131.05 L689.34 130.18 L689.88 128.18 L688.48 127.53 L687.57 126.01 L689.68 125.32 L690.84 123.93 L693.08 122.78 L694.71 121.26 L699.13 120.6 L701.51 121.05 L703.83 117.1 L705.31 118.16 L708.57 115.94 L709.84 115.08 L711.23 112.36 L710.85 109.86 L711.79 108.46 L714.15 108.05 L715.37 111.13 L715.3 112.93 L713.24 115.17 L713.28 117.46 Z M421.24 106.33 L420.51 108.04 L419.5 107.59 L418.99 106.1 L419.44 105.27 L420.87 104.42 L421.24 106.33 Z M719.8 101.84 L721.36 102.31 L722.94 101.37 L723.43 103.86 L720.13 104.47 L718.19 106.68 L714.69 105.16 L713.48 107.59 L711.01 107.62 L710.71 105.41 L711.8 103.7 L714.18 103.58 L714.83 100.51 L715.48 98.77 L718.1 101.09 L719.8 101.84 Z M258.52 96.56 L260.13 96.85 L262.2 96.79 L261.1 97.7 L260.28 97.85 L257.46 96.91 L256.91 96.16 L257.74 95.48 L258.52 96.56 Z M262.65 90.88 L261.57 90.92 L258.69 90.22 L256.62 89.17 L257.39 88.98 L260.31 89.54 L262.59 90.47 L262.65 90.88 Z M125.53 92.2 L124.42 92.51 L120.77 91.5 L120.1 90.71 L118.11 89.93 L117.71 89.3 L115.42 88.9 L114.57 87.69 L114.76 87.18 L117.09 87.66 L118.46 88 L120.54 88.23 L121.3 89 L122.4 90.05 L124.62 90.97 L125.53 92.2 Z M275.26 87.36 L273.79 89.31 L275.24 88.56 L276.73 89.03 L275.95 89.81 L277.92 90.42 L278.95 89.87 L281.16 90.56 L280.48 92.18 L282.03 91.8 L282.31 92.98 L283 94.37 L282.07 96.32 L281.06 96.4 L279.6 95.98 L280.08 94.17 L279.47 93.88 L276.89 95.81 L275.56 95.73 L277.13 94.69 L275 94.15 L272.61 94.28 L268.3 94.21 L267.96 93.56 L269.34 92.77 L268.37 92.17 L270.24 90.83 L272.54 87.29 L273.91 86.03 L275.84 85.26 L276.87 85.36 L276.44 85.96 L275.26 87.36 Z M105.09 79.91 L105.09 79.91 L105.09 79.91 L105.09 79.91 L107.22 79.73 L106.56 82.26 L108.49 84.04 L107.6 84.04 L106.27 83.02 L105.44 82 L104.32 81.31 L103.91 80.33 L104.04 79.62 L105.09 79.91 Z M719.22 87.23 L721.45 91.16 L718.16 90.43 L716.8 93.64 L718.96 95.92 L718.9 97.47 L717.22 96.13 L715.76 97.85 L715.35 95.99 L715.6 93.82 L715.34 91.42 L715.86 89.74 L715.96 86.77 L714.65 84.59 L714.85 81.55 L716.9 80.53 L716.02 79.5 L717.01 79.19 L717.59 80.66 L718.36 82.8 L718.3 84.99 L719.22 87.23 Z M384.91 83.87 L380.97 85.18 L377.83 84.84 L379.63 82.52 L378.47 80.26 L381.49 78.52 L383.17 77.49 L385.04 77.39 L387.42 78.77 L386.23 80.29 L386.59 81.88 L384.91 83.87 Z M428.2 76.42 L426.87 78.22 L424.54 76.97 L424.23 76.04 L427.49 75.31 L428.2 76.42 Z M59.99 73.08 L57.77 73.92 L56.63 73.35 L56.29 72.31 L58.3 71.52 L59.49 71.18 L60.97 71.33 L61.91 72.02 L59.99 73.08 Z M393.32 69.7 L390.95 72.1 L393.21 71.8 L395.65 71.81 L395.07 73.62 L393.07 75.61 L395.37 75.76 L397.52 78.61 L399.04 78.97 L400.41 81.5 L401.04 82.38 L403.74 82.8 L403.47 84.22 L402.33 84.87 L403.22 86.02 L401.22 87.19 L398.25 87.17 L394.47 87.78 L393.43 87.34 L391.96 88.38 L389.91 88.13 L388.34 88.98 L387.16 88.53 L390.42 86.2 L392.41 85.72 L388.92 85.35 L388.29 84.46 L390.62 83.77 L389.4 82.58 L389.82 81.12 L393.13 81.32 L393.46 80.03 L391.93 78.63 L389.24 78.24 L388.71 77.64 L389.51 76.65 L388.78 76.04 L387.59 77.09 L387.46 74.94 L386.33 73.81 L387.14 71.51 L388.87 69.71 L390.64 69.89 L393.32 69.7 Z M32.05 66.87 L30.68 67.21 L29.23 66.8 L27.88 66.19 L30.07 65.81 L31.83 66.01 L32.05 66.87 Z M223.85 61.87 L222.98 63.04 L222 62.85 L221.42 62.19 L221.52 62.03 L222.38 61.37 L223.29 61.41 L223.85 61.87 Z M218 60.64 L215.4 61.87 L213.83 61.82 L213.35 61.22 L215 60.19 L218.05 60.21 L218 60.64 Z M18.37 58.26 L19.75 58.68 L21.13 58.46 L22.93 59.04 L25.13 59.34 L24.95 59.58 L23.27 60.05 L21.58 59.57 L20.73 59.16 L18.77 59.29 L18.24 59.1 L18.37 58.26 Z M210.75 54.09 L211.16 55.07 L212.3 54.73 L213.59 55.31 L216.03 56.07 L218.57 56.77 L218.77 57.82 L220.41 57.65 L221.99 58.39 L220.02 59.09 L216.56 58.55 L215.31 57.55 L213.11 58.73 L209.95 59.88 L209.18 58.58 L206.17 58.8 L208.1 57.7 L208.39 55.95 L209.15 53.91 L210.75 54.09 Z M367.76 52.32 L367.25 53.76 L369.76 55.27 L366.87 56.97 L360.46 58.49 L358.54 58.9 L355.62 58.57 L349.42 57.87 L351.6 56.88 L346.77 55.8 L350.7 55.37 L350.61 54.71 L345.94 54.2 L347.44 52.75 L350.81 52.42 L354.27 53.93 L357.65 52.72 L360.45 53.35 L364.07 52.16 L367.76 52.32 Z M231.41 50.78 L228.92 50.89 L228.36 49.8 L229.31 48.56 L231.34 48.25 L233.08 48.87 L233.1 49.82 L232.85 50.12 L231.41 50.78 Z M11.08 52.03 L12.58 52.59 L12.06 50.97 L18.09 51.3 L22.45 53.38 L20.24 54.35 L16.6 54.58 L16.54 56.75 L15.65 57.22 L13.57 57.15 L11.88 56.38 L8.93 55.73 L8.43 54.76 L6.17 54.4 L3.64 54.69 L2.44 53.91 L2.92 53.08 L0.26 53.61 L1.26 54.66 L0 55.6 L0 46.75 L5.44 48.44 L11.27 50.65 L11.08 52.03 Z M187.45 46.43 L186.07 47.21 L183.07 46.53 L181.26 46.78 L178.23 45.78 L180.18 45.09 L181.74 44.13 L184.09 44.76 L185.43 45.16 L186.09 45.58 L187.45 46.43 Z M800 42.6 L797.56 42.71 L797.17 42 L800 41.08 L800 42.6 Z M2.9 42.46 L0 42.6 L0 41.08 L0.28 40.98 L2.17 40.99 L5.38 41.62 L5.19 41.93 L2.9 42.46 Z M198.78 45.56 L198.77 47.83 L201.74 46.09 L204.4 47.52 L203.74 49.17 L205.89 50.67 L208.21 49.06 L209.83 47.15 L209.95 44.71 L213.11 44.88 L216.39 45.2 L219.38 46.31 L219.51 47.41 L217.86 48.59 L219.42 49.78 L219.14 50.86 L214.79 52.42 L211.7 52.76 L209.4 52.09 L208.74 53.21 L206.6 55.08 L205.95 56.05 L203.37 57.56 L200.19 57.71 L198.44 58.64 L198.29 60.09 L195.7 60.37 L192.98 62.17 L190.57 64.67 L189.71 66.42 L189.59 69 L192.86 69.37 L193.86 71.45 L194.9 73.14 L198.01 72.7 L202.13 73.66 L204.36 74.51 L205.95 75.56 L208.73 76.17 L211.08 77.11 L214.75 77.23 L217.17 77.45 L216.81 79.37 L217.5 81.61 L219.11 84.09 L222.42 86.2 L224.13 85.48 L225.33 83.2 L224.17 79.69 L222.6 78.52 L226.16 77.47 L228.68 75.92 L229.91 74.37 L229.73 72.88 L228.22 71 L225.52 69.32 L228.14 66.99 L227.17 64.98 L226.43 61.51 L227.98 61 L231.79 61.6 L234.07 61.82 L235.91 61.24 L237.98 61.99 L240.72 63.28 L241.39 64.14 L245.35 64.31 L245.29 66.17 L246.03 68.98 L248.06 69.33 L249.67 70.64 L252.88 69.41 L255.01 66.95 L256.48 65.92 L258.21 67.91 L261.11 70.74 L263.56 73.41 L262.67 74.8 L265.63 76.05 L267.62 77.32 L271.17 77.9 L272.59 78.61 L273.47 80.49 L275.2 80.78 L276.1 81.62 L276.26 84.12 L274.65 84.95 L273.05 85.73 L269.39 86.52 L266.59 88.35 L262.84 88.71 L258.08 88.24 L254.75 88.23 L252.45 88.38 L250.59 89.97 L247.75 90.96 L244.55 93.9 L241.99 95.95 L243.88 95.59 L247.44 92.67 L252.11 90.82 L255.43 90.59 L257.4 91.68 L255.3 93.18 L256 95.57 L256.73 97.25 L259.61 98.36 L263.29 98.04 L265.52 95.54 L265.67 97.15 L267.1 97.95 L264.36 99.41 L259.43 100.73 L257.23 101.63 L254.75 103.23 L253.06 103.07 L252.97 101.19 L256.83 99.35 L253.28 99.42 L250.81 99.69 L251.19 100.42 L248.82 101.5 L246.53 102.27 L244.19 102.92 L242.91 104.38 L242.63 104.74 L242.61 105.92 L243.34 107.1 L244.27 107.16 L244.03 106.34 L244.7 106.84 L244.52 107.47 L243.02 107.83 L241.95 107.79 L240.31 108.18 L239.34 108.29 L238.05 108.4 L236.2 109.04 L239.46 108.62 L240.12 109.04 L237.01 109.71 L235.6 109.72 L235.66 109.44 L234.99 110.06 L235.64 110.16 L235.16 111.76 L233.54 113.47 L233.38 112.9 L232.89 112.78 L232.16 112.23 L232.62 113.42 L233.15 113.82 L233.21 114.66 L232.49 115.52 L231.24 117.3 L231.04 117.21 L231.73 115.7 L230.59 114.85 L230.33 113 L229.91 113.96 L230.38 115.37 L228.98 115.04 L230.44 115.74 L230.54 117.85 L231.17 118.01 L231.4 118.77 L231.72 121 L230.3 122.65 L228.01 123.31 L226.54 124.61 L225.43 124.75 L224.31 125.57 L223.99 126.31 L221.55 127.76 L220.3 128.81 L219.25 130.13 L218.91 131.71 L219.3 133.25 L220.04 135.16 L221.03 136.73 L221.04 137.69 L222.1 140.27 L222.03 141.77 L221.93 142.63 L221.38 143.99 L220.71 144.27 L219.62 144 L219.27 143.02 L218.42 142.51 L217.24 140.6 L216.21 138.9 L215.88 138.03 L216.33 136.56 L215.71 135.33 L213.98 133.47 L213.11 133.13 L210.87 134.14 L210.47 134.03 L209.39 132.99 L208 132.44 L205.49 132.72 L203.52 132.48 L201.82 132.63 L200.88 132.94 L201.3 133.57 L201.27 134.47 L201.74 134.91 L201.32 135.2 L200.49 134.87 L199.66 135.29 L198.04 135.23 L196.39 134.05 L194.45 134.33 L192.83 133.81 L191.45 133.97 L189.58 134.49 L187.55 136.14 L185.35 137.09 L184.13 138.16 L183.62 139.16 L183.6 140.69 L183.71 141.76 L184.13 142.51 L184.14 142.52 L184.13 142.52 L183.27 144.46 L182.88 146.06 L182.72 149.04 L182.51 150.12 L182.89 151.34 L183.58 152.42 L184.02 154.14 L185.5 155.8 L186.02 157.07 L186.89 158.16 L189.25 158.75 L190.17 159.68 L192.11 159.06 L193.81 158.83 L195.47 158.43 L196.87 158.05 L198.28 157.15 L198.81 155.85 L199 153.98 L199.38 153.33 L200.89 152.75 L203.24 152.24 L205.2 152.31 L206.55 152.13 L207.08 152.6 L207.01 153.67 L205.81 154.99 L205.29 156.34 L205.7 156.73 L205.36 157.69 L204.81 159.42 L204.24 158.85 L203.78 158.89 L203.79 159.21 L204.21 159.23 L204.17 159.83 L203.81 160.79 L204 161.13 L203.77 161.93 L203.91 162.14 L203.65 163.26 L203.22 163.85 L202.82 163.93 L202.38 164.69 L203.1 165.1 L203.29 164.77 L203.94 165.05 L204.18 165.14 L204.66 164.75 L205.3 164.71 L205.5 164.89 L205.85 164.78 L206.88 164.99 L207.91 164.93 L208.62 164.68 L208.88 164.43 L209.59 164.55 L210.12 164.7 L210.71 164.65 L211.15 164.45 L212.16 164.76 L212.52 164.81 L213.19 165.23 L213.84 165.72 L214.64 166.06 L215.23 166.68 L215.04 166.89 L214.92 167.39 L215.15 168.2 L214.64 168.96 L214.4 169.85 L214.33 170.83 L214.45 171.4 L214.5 172.4 L214.16 172.62 L213.96 173.57 L214.11 174.16 L213.65 174.73 L213.76 175.33 L214.1 175.69 L214.66 176.9 L215.52 177.79 L216.56 178.74 L217.36 179.54 L217.32 180.01 L218.2 180.11 L218.41 179.93 L219.02 180.47 L220.12 180.31 L221.06 179.75 L222.41 179.31 L223.17 178.64 L224.4 178.77 L224.31 178.99 L225.55 179.07 L226.54 179.45 L227.27 180.12 L228.1 180.73 L229.25 180.8 L230.92 179.25 L231.83 179.01 L231.86 178.28 L232.27 176.4 L233.54 175.37 L234.94 175.33 L235.12 174.87 L236.86 175.05 L238.6 173.93 L239.47 173.43 L240.55 172.36 L241.33 172.5 L241.92 173.08 L241.49 173.83 L241.42 174.36 L240.12 174.61 L240.84 175.62 L240.82 176.79 L239.84 178.08 L240.68 179.84 L241.63 179.69 L242.13 178.09 L241.44 177.31 L241.33 175.62 L244.1 174.72 L243.79 173.67 L244.57 172.97 L245.37 174.53 L246.93 174.57 L248.37 175.81 L248.46 176.55 L250.45 176.56 L252.83 176.34 L254.1 177.33 L255.8 177.61 L257.05 176.91 L257.07 176.35 L259.82 176.22 L262.49 176.19 L260.6 176.84 L261.36 177.89 L263.14 178.06 L264.82 179.15 L265.18 180.93 L266.33 180.88 L267.2 181.41 L268.66 182.22 L270.04 183.67 L270.1 184.82 L270.94 184.87 L272.13 185.95 L273.01 186.73 L275.67 187.17 L275.91 186.77 L277.7 186.61 L280.09 187.21 L280.85 187.45 L282.48 187.98 L284.84 189.85 L285.2 190.76 L285.96 190.66 L286.51 191.89 L287.76 195.77 L288.95 196.14 L289.01 197.67 L287.33 199.5 L288.03 200.17 L291.95 200.52 L292.03 202.75 L293.72 201.29 L296.52 202.09 L300.21 203.45 L301.29 204.75 L300.93 205.98 L303.51 205.3 L307.84 206.47 L311.16 206.38 L314.44 208.22 L317.28 210.71 L318.99 211.35 L320.89 211.44 L321.7 212.14 L322.45 214.97 L322.82 216.32 L321.94 219.99 L320.81 221.44 L317.67 224.53 L316.26 227.05 L314.61 228.97 L314.06 229.02 L313.44 230.65 L313.59 234.82 L312.98 238.24 L312.74 239.71 L312.04 240.58 L311.64 243.55 L309.39 246.45 L309.01 248.75 L307.21 249.71 L306.69 251.04 L304.28 251.04 L300.78 251.89 L299.22 252.88 L296.73 253.53 L294.11 255.3 L292.23 257.5 L291.91 259.16 L292.28 260.39 L291.86 262.64 L291.36 263.72 L289.81 264.94 L287.34 268.85 L285.39 270.62 L283.88 271.66 L282.86 273.77 L281.39 275.04 L280.43 276.44 L277.92 277.67 L276.28 277.23 L275.08 277.47 L273.02 276.51 L271.52 276.58 L270.16 275.35 L270.01 276.51 L272.83 278.42 L272.53 279.95 L273.92 280.92 L273.8 282 L271.67 284.85 L268.37 286.04 L263.92 286.51 L261.48 286.28 L261.94 287.61 L261.49 289.27 L261.9 290.39 L260.56 291.17 L258.29 291.48 L256.15 290.67 L255.29 291.25 L255.6 293.46 L257.1 294.13 L258.32 293.43 L258.98 294.58 L256.94 295.27 L255.15 296.66 L254.82 298.89 L254.3 300.08 L252.2 300.09 L250.46 301.23 L249.82 302.89 L252.01 304.52 L254.13 304.97 L253.37 306.96 L250.74 308.22 L249.3 310.82 L247.27 311.7 L246.36 312.74 L247.08 315.05 L248.56 316.33 L247.62 316.22 L245.64 316.2 L244.57 316.75 L242.57 317.55 L242.21 319.63 L241.27 319.68 L238.76 318.96 L236.22 317.41 L233.45 316.14 L232.76 314.73 L233.39 313.43 L232.27 311.95 L231.98 308.16 L232.93 306.03 L235.27 304.31 L231.9 303.66 L234.02 301.7 L234.77 298.01 L237.24 298.79 L238.41 294.19 L236.91 293.59 L236.22 296.37 L234.82 296.06 L235.52 292.88 L236.27 288.76 L237.29 287.24 L236.65 285.07 L236.47 282.57 L237.41 282.5 L238.77 278.91 L240.31 275.35 L241.25 272.04 L240.74 268.71 L241.4 266.88 L241.13 264.14 L242.43 261.42 L242.83 257.12 L243.55 252.51 L244.24 247.54 L244.08 243.9 L243.62 240.77 L241.39 239.5 L241.2 238.59 L236.79 236.35 L232.8 233.92 L231.09 232.55 L230.17 230.72 L230.54 230.08 L228.65 227.16 L226.46 223.06 L224.36 218.64 L223.45 217.62 L222.75 215.99 L221.03 214.54 L219.44 213.64 L220.16 212.65 L219.09 210.53 L219.78 208.97 L221.55 207.57 L222.73 205.91 L222.25 204.93 L221.4 205.97 L220.07 204.99 L220.52 204.37 L220.15 202.35 L220.93 202.01 L221.33 200.63 L222.18 199.2 L222.02 198.29 L223.24 197.82 L224.77 196.93 L224.46 196.24 L225.29 196.07 L225.2 194.96 L225.72 194.16 L226.82 194.01 L227.75 192.61 L228.61 191.45 L227.79 190.92 L228.21 189.63 L227.7 187.59 L228.18 187.01 L227.83 185.13 L226.93 183.95 L226.19 183.31 L225.71 182.11 L226.26 181.51 L225.7 181.36 L225.28 180.63 L224.18 180.01 L223.2 180.15 L222.75 180.92 L221.86 181.48 L221.37 181.56 L221.15 182.02 L222.21 183.23 L221.61 183.51 L221.29 183.84 L220.25 183.95 L219.87 182.63 L219.58 183 L218.85 182.87 L218.4 181.98 L217.49 181.83 L216.91 181.57 L215.96 181.58 L215.89 182.06 L215.63 181.72 L214.43 181.23 L213.97 180.76 L214.23 180.38 L214.15 179.89 L213.53 179.35 L212.66 178.92 L211.89 178.63 L211.75 177.98 L211.17 177.59 L211.31 178.23 L210.86 178.76 L210.36 178.15 L209.64 177.93 L209.34 177.48 L209.35 176.8 L209.65 176.1 L209.02 175.79 L209.53 175.36 L208.76 174.66 L207.72 173.76 L207.23 173.01 L206.29 172.31 L205.18 171.31 L205.43 170.97 L205.79 171.3 L205.96 171.15 L205.58 170.45 L204.9 170.26 L204.66 170.78 L203.37 170.75 L202.57 170.53 L201.65 170.09 L200.42 169.95 L199.79 169.48 L198.65 169.09 L197.26 169.05 L196.25 168.61 L195.05 167.69 L192.53 165.3 L191.39 164.58 L189.57 164 L188.33 164.16 L186.55 165 L185.43 165.21 L183.86 164.63 L182.19 164.21 L180.12 163.19 L178.45 162.87 L175.93 161.84 L174.08 160.78 L173.51 160.19 L172.27 160.05 L170 159.35 L169.07 158.34 L166.68 157.07 L165.57 155.67 L165.04 154.59 L165.78 154.37 L165.55 153.74 L166.07 153.16 L166.08 152.4 L165.33 151.4 L165.13 150.51 L164.38 149.39 L162.42 147.18 L160.19 145.45 L159.11 144.06 L157.2 143.15 L156.79 142.61 L157.13 141.24 L156 140.72 L154.69 139.64 L154.13 138.09 L152.94 137.91 L151.65 136.74 L150.6 135.66 L150.51 134.96 L149.31 133.29 L148.52 131.58 L148.56 130.73 L146.95 129.85 L146.21 129.95 L144.94 129.33 L144.59 130.24 L144.95 131.3 L145.17 132.97 L145.93 133.89 L147.58 135.42 L147.95 135.94 L148.28 136.1 L148.58 136.86 L148.97 136.83 L149.42 138.27 L150.09 138.83 L150.57 139.62 L151.96 140.75 L152.7 142.82 L153.36 143.79 L153.98 144.83 L154.1 146 L155.17 146.08 L156.06 147.09 L156.87 148.08 L156.81 148.48 L155.88 149.29 L155.49 149.28 L154.9 147.93 L153.45 146.66 L151.84 145.59 L150.71 145.03 L150.78 143.4 L150.44 142.2 L149.38 141.51 L147.86 140.51 L147.56 140.8 L147 140.22 L145.63 139.68 L144.32 138.39 L144.48 138.23 L145.4 138.35 L146.22 137.52 L146.31 136.52 L144.6 134.93 L143.29 134.32 L142.47 132.93 L141.65 131.47 L140.62 129.7 L139.72 127.7 L139.34 126.56 L137.9 125.29 L136.87 125.02 L136.62 124.38 L135.38 124.27 L134.58 123.67 L132.52 123.45 L131.95 123.09 L131.68 121.87 L129.52 119.64 L127.67 116.55 L127.75 116.04 L126.77 115.3 L125.05 113.44 L124.74 111.63 L123.56 110.41 L124.05 108.57 L123.97 106.67 L123.26 104.96 L124.13 102.87 L124.67 98.84 L124.27 95.86 L123.57 93.95 L122.92 92.92 L123.19 92.49 L126.4 93.24 L127.58 95.34 L128.13 94.76 L127.78 92.93 L127.02 91.11 L126.72 91.11 L122.42 88.92 L120.83 87.96 L116.81 87.04 L115.57 85.08 L115.89 83.71 L113.05 82.77 L112.66 80.97 L109.97 79.36 L109.92 78.22 L108.7 77.38 L106.74 76.67 L106.11 74.73 L103.25 72.94 L102.05 70.84 L99.92 70.69 L96.38 70.64 L93.78 70 L89.18 67.69 L87.06 67.27 L83.17 66.48 L80.09 66.67 L75.72 65.65 L73.08 64.7 L70.61 65.17 L71.07 66.71 L69.84 66.86 L67.27 67.32 L65.32 68.07 L62.85 68.54 L62.53 67.23 L63.53 65.05 L65.9 64.37 L65.29 63.81 L62.45 65.05 L60.94 66.53 L57.74 68.11 L59.36 69.19 L57.26 70.79 L54.87 71.72 L52.65 72.39 L52.1 73.38 L48.63 74.53 L47.93 75.57 L45.33 76.52 L43.8 76.35 L41.73 76.97 L39.47 77.72 L37.62 78.47 L33.81 79.1 L33.46 78.73 L35.89 77.69 L38.07 77 L40.44 75.79 L43.19 75.54 L44.29 74.63 L47.37 73.3 L47.86 72.85 L49.5 72.07 L49.89 70.38 L51.02 69.07 L48.46 69.74 L47.74 69.36 L46.54 70.17 L45.09 69.04 L44.49 69.84 L43.65 68.73 L41.43 69.62 L40.07 69.62 L39.88 68.3 L40.28 67.48 L38.85 66.69 L35.96 67.12 L34.08 66.07 L32.56 65.54 L32.55 64.28 L30.84 63.33 L31.7 62.06 L33.51 60.82 L34.31 59.67 L36.1 59.51 L37.63 59.87 L39.42 58.8 L41.03 58.99 L42.73 58.3 L42.31 57.28 L41.07 56.88 L42.72 56.03 L41.35 56.05 L38.99 56.53 L38.32 57.03 L36.56 56.54 L33.42 56.78 L30.17 56.25 L29.23 55.36 L26.42 54.07 L29.54 53.14 L34.5 52.05 L36.33 52.05 L36.03 53.16 L40.72 53.08 L38.91 51.7 L36.18 50.85 L34.6 49.74 L32.47 48.79 L29.41 48.09 L30.66 46.93 L34.6 46.85 L37.4 45.84 L37.93 44.76 L40.2 43.7 L42.37 43.45 L46.58 42.46 L48.62 42.61 L52.04 41.43 L55.4 41.89 L57.01 42.9 L58 42.47 L61.76 42.6 L61.62 43.11 L65.02 43.49 L67.29 43.27 L71.97 43.97 L76.24 44.18 L77.96 44.47 L80.91 44.11 L84.28 44.77 L86.7 45.08 L90.84 45.62 L94.34 46.69 L96.66 46.89 L98.61 45.97 L101.3 45.27 L104.6 45.54 L107.93 44.57 L111.57 44.01 L113.09 44.93 L114.75 44.42 L115.25 43.37 L116.78 43.61 L120.54 45.6 L123.5 44.09 L123.8 45.78 L126.53 45.41 L127.37 44.77 L130.06 44.89 L133.46 45.83 L138.66 46.64 L141.72 47.02 L143.9 46.88 L146.89 48 L143.77 49.11 L147.78 49.58 L153.78 49.32 L155.68 48.93 L158.04 50.26 L160.46 49.14 L158.19 48.2 L159.63 47.44 L162.33 47.33 L164.11 47.11 L165.9 47.64 L168.14 48.85 L170.62 48.67 L174.55 49.67 L178 49.32 L181.24 49.37 L180.98 47.99 L182.96 47.6 L186.4 48.36 L186.39 50.46 L187.8 48.69 L189.59 48.75 L190.59 46.51 L188.21 45.14 L185.62 44.24 L185.8 41.79 L188.42 40.18 L191.36 40.53 L193.6 41.51 L196.62 44.02 L194.65 45.11 L198.78 45.56 Z M146.3 37.51 L145.19 38.55 L150.13 37.88 L153.22 39 L155.73 37.86 L157.76 38.59 L159.58 40.78 L160.7 39.85 L159.12 37.58 L161.07 37.25 L163.28 37.61 L165.77 38.51 L167.17 40.67 L167.86 42.24 L171.59 43.34 L175.6 44.39 L175.36 45.37 L171.71 45.55 L173.13 46.4 L172.38 47.22 L168.36 46.87 L164.53 46.27 L161.95 46.4 L157.78 47.16 L151.18 47.55 L148.19 47.7 L146.99 46.65 L143.96 46.04 L141.98 46.29 L139.24 44.53 L140.72 44.3 L144.15 43.92 L147.29 44.02 L150.19 43.63 L145.89 43.11 L141.14 43.29 L137.99 43.24 L136.82 42.42 L141.97 41.54 L138.54 41.57 L134.66 40.98 L136.53 39.32 L138.07 38.43 L144.02 37.08 L146.3 37.51 Z M167.78 36.84 L165.82 38.31 L162.36 36.76 L163.11 36.44 L166.09 36.36 L167.78 36.84 Z M230.36 37.55 L230.55 38.16 L228.19 38.1 L225.8 38.05 L223.36 38.35 L222.72 38.22 L220.28 37.04 L220.37 36.24 L221.44 36.09 L226.52 36.33 L230.36 37.55 Z M207.64 37.43 L209.39 38.81 L211.44 37.02 L217.08 36.11 L220.89 38.41 L220.56 39.86 L224.95 39.22 L227.06 38.33 L231.99 39.46 L235.05 40.52 L235.34 41.49 L239.46 40.98 L241.78 42.4 L247.14 43.28 L249.08 44.17 L251.18 46.25 L247.1 47.29 L252.33 48.74 L255.86 49.23 L259.06 51.27 L262.55 51.42 L261.86 52.98 L257.96 55.56 L255.22 54.61 L251.73 52.47 L248.86 52.75 L248.57 54.02 L250.91 55.31 L253.93 56.34 L254.84 56.93 L256.29 59.13 L255.52 60.72 L252.72 60.12 L247.15 58.34 L250.29 60.26 L252.6 61.6 L252.97 62.38 L246.94 61.49 L242.17 60.2 L239.48 59.12 L240.25 58.49 L236.94 57.35 L233.7 56.27 L233.74 56.91 L227.31 57.27 L225.43 56.5 L226.89 54.87 L231.07 54.83 L235.64 54.54 L234.9 53.75 L235.68 52.64 L238.55 50.48 L237.94 49.5 L237.09 48.73 L233.68 47.66 L229.18 46.9 L230.6 46.34 L228.25 44.96 L226.29 44.83 L224.54 44.07 L223.35 44.73 L219.32 45.02 L211.23 44.52 L206.53 43.87 L202.93 43.53 L201.08 42.75 L203.41 41.74 L200.25 41.73 L199.54 39.48 L201.25 37.49 L203.54 36.58 L209.28 35.99 L207.64 37.43 Z M176.99 35.9 L179.64 36.37 L183.6 36.09 L184.18 36.73 L182.1 37.8 L185.47 38.76 L185.07 40.76 L181.42 41.62 L179.28 41.43 L177.74 40.58 L172.22 38.87 L172.27 38.16 L176.8 38.43 L174.36 36.98 L176.99 35.9 Z M719.12 37.31 L715.75 37.32 L711.2 37.07 L710.81 36.96 L712.91 36.08 L715.69 35.87 L718.85 36.72 L719.12 37.31 Z M192.9 38.28 L190.51 39.95 L187.98 39.86 L186.59 37.91 L186.63 36.81 L187.79 35.86 L189.99 35.26 L194.62 35.33 L198.87 35.87 L195.55 37.85 L192.9 38.28 Z M132.31 41.33 L126.46 42.44 L125.29 41.47 L120.16 40.29 L120.91 39.57 L122.65 37.73 L124.58 36.27 L122.41 34.91 L129.92 34.56 L133.09 35.02 L138.77 35.14 L140.92 35.79 L143.31 36.72 L140.52 37.28 L135.07 38.84 L132.31 40.4 L132.31 41.33 Z M734.96 33.15 L732.39 34.02 L728.84 33.83 L724.71 32.95 L725.24 32.23 L729.38 32.56 L734.96 33.15 Z M191.97 33.38 L190.76 34.24 L187.54 34.07 L184.84 33.49 L186.03 32.49 L189.22 31.9 L191.16 32.67 L191.97 33.38 Z M722.41 32.08 L720.67 33.73 L712.48 33.67 L708.79 34.2 L704.39 32.75 L705.58 31.22 L708.51 30.81 L714.38 30.9 L722.41 32.08 Z M181.11 29.51 L182.81 30.54 L182.88 31.68 L181.87 33.33 L178.2 33.56 L175.81 33.21 L175.86 31.91 L172.22 32.08 L172.08 30.36 L174.47 30.43 L177.81 29.67 L180.94 29.8 L181.11 29.51 Z M159.53 30.66 L160.4 31.45 L162.38 31.08 L164.71 31.18 L165.1 32.27 L163.75 33.32 L156.22 33.67 L150.62 34.63 L147.24 34.68 L146.95 33.95 L151.57 32.97 L141.53 33.24 L138.42 32.84 L141.45 30.67 L143.54 30.05 L149.8 30.8 L153.75 32.11 L157.63 32.28 L154.45 30.16 L156.49 29.35 L158.78 29.6 L159.53 30.66 Z M527.86 42.84 L526.54 43.04 L519.28 42.75 L518.69 41.76 L514.67 41.17 L514.35 39.97 L516.62 39.49 L516.54 38.28 L520.95 36.38 L518.91 36.11 L524.23 34.16 L523.63 33.15 L528.6 31.98 L535.93 30.55 L543.33 30.14 L547.14 29.31 L551.46 29.02 L553 29.9 L551.51 30.59 L543.64 31.69 L536.85 32.75 L529.95 34.87 L526.64 37.04 L523.15 39.17 L523.61 41.02 L527.86 42.84 Z M189.59 28.67 L192.06 29.39 L196.43 29.38 L198.35 30.11 L197.85 30.95 L200.4 31.45 L201.81 31.98 L204.8 32.08 L208.05 32.26 L211.58 31.78 L216.1 31.59 L219.71 31.75 L222.09 32.58 L222.59 33.5 L221.2 34.09 L217.89 34.57 L215.05 34.3 L208.67 34.64 L204.11 34.68 L200.52 34.41 L194.62 33.69 L193.85 32.47 L193.58 31.37 L191.35 30.4 L186.75 30.13 L184.17 29.44 L185.01 28.53 L189.59 28.67 Z M141.78 27.45 L141.48 29.16 L139.76 29.93 L137.69 30.04 L133.56 30.99 L130 31.33 L126.99 30.85 L126.99 30.85 L130.76 29.19 L135.32 27.75 L138.73 27.78 L141.78 27.45 Z M637.71 28.95 L638.31 30.04 L640.34 29.5 L646.84 29.53 L651.85 30.62 L653.63 31.45 L653.08 32.6 L650.62 33.26 L644.78 34.5 L643.11 35.16 L645.87 35.47 L649.15 36.03 L651.15 35.61 L652.29 37.03 L653.26 36.46 L656.82 36.1 L663.95 36.47 L664.49 37.51 L673.78 37.84 L673.91 36.14 L678.62 36.53 L682.17 36.52 L685.76 37.69 L686.78 39.11 L685.47 40.04 L688.26 41.79 L691.75 42.7 L693.9 40.36 L697.46 41.36 L701.25 40.77 L705.55 41.45 L707.19 40.83 L710.82 41.14 L709.22 39.07 L712.15 38.11 L732.22 39.56 L734.11 40.87 L739.93 42.57 L748.9 42.15 L753.33 42.52 L755.18 43.44 L754.91 45.06 L757.65 45.69 L760.62 45.24 L764.56 45.18 L768.76 45.62 L772.97 45.37 L776.84 47.35 L779.59 46.64 L777.8 45.22 L778.79 44.23 L785.88 44.85 L790.5 44.72 L796.89 45.78 L800 46.75 L800 55.6 L799.98 55.61 L797.13 56.59 L794.25 56.43 L796.25 57.61 L797.57 59.44 L798.6 60.04 L798.86 60.96 L798.29 61.55 L794.14 61.06 L787.93 62.73 L785.96 62.99 L782.56 64.56 L779.33 65.92 L778.51 66.93 L775.33 65.39 L769.54 67.14 L768.53 66.31 L766.39 67.26 L763.42 66.96 L762.7 68.42 L760.04 70.57 L760.12 71.47 L762.65 71.97 L762.35 75.2 L760.29 75.28 L759.34 77.14 L760.26 78.1 L756.38 79.23 L755.6 81.77 L752.29 82.31 L751.63 84.57 L748.42 86.64 L747.6 85.11 L746.65 81.87 L745.41 76.93 L746.48 73.85 L748.35 72.52 L748.47 71.48 L751.92 70.99 L755.89 68.19 L759.72 65.9 L763.71 64.13 L765.5 61 L762.8 61.19 L761.46 63.02 L755.83 65.46 L754.01 62.72 L748.27 63.48 L742.71 67.2 L744.54 68.57 L739.58 69.15 L736.15 69.38 L736.31 67.77 L732.85 67.43 L730.1 68.52 L723.31 68.14 L716 68.8 L708.8 73.14 L700.28 78.38 L703.78 78.66 L704.87 80.05 L707.03 80.54 L708.45 79.43 L710.89 79.58 L714.1 82.02 L714.18 83.91 L712.44 86.13 L712.25 88.79 L711.25 92.34 L707.9 95.56 L707.15 97.09 L704.14 99.68 L701.15 102.25 L699.71 103.56 L696.75 104.86 L695.35 104.89 L693.95 103.81 L690.97 105.44 L690.62 106.18 L689.78 106.04 L688.81 106.8 L688.15 107.55 L688.23 109.15 L687.08 109.64 L686.69 110.03 L685.85 110.69 L684.37 111.05 L683.41 111.65 L683.34 112.61 L683.08 112.86 L683.96 113.22 L685.22 114.19 L687.14 116.82 L687.69 118.26 L687.71 120.82 L686.87 122.04 L684.86 122.47 L683.08 123.39 L681.08 123.58 L680.83 122.37 L681.24 120.7 L680.26 118.39 L681.91 118.01 L680.39 116.11 L679.31 115.69 L679.04 116.11 L678.39 116.29 L678.31 115.87 L677.74 115.67 L677.14 115.31 L677.75 114.34 L678.27 114.08 L678.07 113.67 L678.64 112.47 L678.49 112.11 L677.19 111.87 L676.15 111.27 L673.04 111.92 L671.4 112.95 L669.01 113.56 L670.19 112.53 L669.73 111.67 L671.49 110.17 L670.31 109.01 L668.37 109.79 L665.87 111.34 L664.5 112.77 L662.32 112.88 L661.18 113.92 L662.35 115.42 L664.17 115.78 L664.25 116.78 L666.01 117.43 L668.5 115.84 L670.47 116.71 L671.91 116.77 L672.27 117.93 L669.12 118.55 L668.08 119.75 L665.92 120.87 L664.78 122.42 L667.17 123.64 L668.05 125.83 L669.4 127.87 L670.91 129.57 L670.87 131.22 L669.48 131.83 L670.01 133.02 L671.32 133.71 L670.97 135.52 L670.41 137.28 L669.17 137.48 L667.55 139.88 L665.75 142.8 L663.68 145.45 L660.63 147.5 L657.53 149.37 L655.03 149.63 L653.67 150.61 L652.9 149.89 L651.65 151 L648.54 152.11 L646.19 152.45 L645.43 154.8 L644.2 154.93 L643.62 153.31 L644.14 152.46 L641.16 151.74 L640.11 152.11 L637.14 154.01 L635.29 156.11 L634.8 157.65 L636.5 159.99 L638.58 162.89 L640.6 164.27 L641.95 166.05 L642.97 170.16 L642.67 174.07 L640.81 175.54 L638.27 176.97 L636.46 178.82 L633.69 180.89 L632.88 179.46 L633.5 177.96 L631.85 176.7 L629.99 176.37 L629.09 175.21 L627.97 172.92 L625.97 171.9 L624.07 171.94 L624.4 170.19 L622.44 170.21 L622.26 172.65 L621.06 175.9 L620.34 177.86 L620.49 179.47 L621.94 179.54 L622.84 181.57 L623.24 183.49 L624.48 184.76 L625.83 185.02 L626.98 186.17 L627.49 186.38 L628.8 187.72 L629.74 189.21 L629.86 190.71 L629.63 191.72 L629.84 192.48 L630.01 193.8 L630.79 194.41 L631.66 196.37 L631.62 197.13 L630.04 197.27 L627.94 195.63 L625.31 193.86 L625.05 192.73 L623.77 191.25 L623.46 189.41 L622.66 188.19 L622.9 186.58 L622.41 185.63 L621.53 184.78 L621.15 183.68 L619.97 182.43 L618.9 181.37 L618.53 182.68 L618.11 181.44 L618.35 180.06 L619.01 177.93 L618.79 176.28 L619.48 174.57 L618.73 173.26 L618.91 170.84 L618.01 169.69 L617.28 167.03 L616.88 164.22 L615.92 162.38 L614.46 163.49 L611.93 165.08 L610.69 164.88 L609.31 164.36 L610.07 161.61 L609.61 159.53 L607.87 156.96 L608.14 156.16 L606.84 155.88 L605.26 154.06 L604.63 152.91 L604.5 151.77 L604.08 150.7 L603.15 149.41 L601.1 149.32 L601.3 150.24 L600.61 151.47 L599.66 151.02 L599.34 151.43 L598.71 151.19 L597.85 150.99 L597.53 151.8 L596.02 151.77 L593.28 152.23 L593.41 153.9 L592.22 155.22 L589.02 156.71 L586.54 159.33 L584.87 160.73 L582.65 162.19 L582.65 163.21 L581.54 163.75 L579.54 164.55 L578.5 164.67 L577.83 166.36 L578.3 169.25 L578.41 171.1 L577.47 173.21 L577.46 176.98 L576.31 177.09 L575.3 178.79 L575.98 179.52 L573.95 180.15 L573.2 181.66 L572.31 182.3 L570.21 180.22 L569.18 177.11 L568.33 174.87 L567.55 173.82 L566.37 171.68 L565.81 168.91 L565.43 167.52 L563.41 164.47 L562.49 160.16 L561.82 157.31 L561.83 154.62 L561.4 152.54 L558.17 153.87 L556.6 153.61 L553.7 150.91 L554.77 150.11 L554.11 149.24 L551.5 147.35 L549.87 146.79 L549.21 145.19 L547.5 143.5 L543.4 143.92 L539.79 143.96 L536.66 144.27 L532.48 143.6 L530.06 143.09 L527.55 142.8 L526.6 140.08 L525.54 139.68 L523.83 140.08 L521.59 141.15 L518.87 140.42 L516.63 138.71 L514.49 138.08 L513.01 135.97 L511.37 133 L510.17 133.37 L508.76 132.63 L507.93 133.5 L506.61 133.39 L507.07 134.37 L506.88 134.87 L507.59 136.55 L508.46 138.47 L509.55 138.97 L509.94 139.76 L511.45 140.69 L511.58 141.61 L511.36 142.35 L511.64 143.09 L512.28 143.72 L512.58 144.44 L512.91 144.99 L512.76 143.37 L513.36 142.21 L513.97 141.97 L514.64 142.66 L514.68 143.97 L514.2 145.27 L514.62 146.12 L515.02 146.01 L515.1 146.62 L516.84 146.27 L518.68 146.33 L520.02 146.4 L521.54 144.89 L523.2 143.47 L524.6 142.1 L525.25 141.34 L525.52 141.54 L525.31 142.45 L525.02 142.86 L525.33 144.61 L526.32 146.13 L527.56 146.94 L529.19 147.23 L530.51 147.63 L531.51 148.91 L532.11 149.64 L532.91 149.93 L532.9 150.42 L532.09 151.75 L531.74 152.37 L530.8 153.08 L529.97 154.6 L528.97 154.49 L528.5 155.02 L528.15 156.14 L528.42 157.63 L528.21 157.9 L527.19 157.89 L525.8 158.72 L525.58 159.81 L525.07 160.28 L523.69 160.26 L522.82 160.82 L522.83 161.71 L521.76 162.33 L520.53 162.12 L519.05 162.87 L518.02 163 L516.41 163.59 L515.98 164.58 L515.93 165.34 L513.72 166.28 L510.17 167.31 L508.18 168.88 L507.2 169 L506.53 168.87 L505.23 169.79 L503.82 170.22 L501.95 170.34 L501.39 170.46 L500.9 171.05 L500.32 171.21 L499.98 171.78 L498.88 171.73 L498.17 172.03 L496.63 171.92 L496.05 170.62 L496.11 169.41 L495.75 168.75 L495.32 167.11 L494.68 166.19 L495.12 166.08 L494.89 165.07 L495.16 164.64 L495.07 163.67 L494.78 162.72 L494.11 162.05 L493.94 161.17 L492.79 160.37 L491.6 158.51 L490.98 156.7 L489.44 155.17 L488.45 154.8 L486.98 152.68 L486.72 151.14 L486.81 149.82 L485.54 147.36 L484.5 146.49 L483.3 146.03 L482.57 144.76 L482.69 144.26 L482.07 143.1 L481.42 142.61 L480.55 140.96 L479.2 139.16 L478.07 137.64 L476.96 137.65 L477.31 136.43 L477.41 135.65 L477.68 134.76 L477.61 134.44 L476.98 135.33 L476.5 137.01 L475.9 138.17 L475.38 138.56 L474.64 137.84 L473.64 136.85 L472.05 133.66 L471.82 133.87 L472.74 136.21 L474.11 138.44 L475.79 141.91 L476.61 143.11 L477.32 144.37 L479.32 146.83 L478.87 147.22 L478.95 148.66 L481.53 150.66 L481.93 151.11 L482.64 153.29 L482.15 153.69 L482.48 155.98 L483.29 158.64 L484.14 159.18 L485.36 160 L486.65 162.58 L487.26 164.62 L488.48 165.7 L491.51 167.8 L492.74 169.06 L493.95 170.35 L494.64 171.11 L495.74 171.78 L496.26 172.47 L496.19 173.39 L494.92 173.92 L495.88 174.53 L496.6 174.94 L497.04 175.86 L498.04 176.79 L499.14 176.79 L501.24 176.23 L503.66 175.96 L505.61 175.27 L506.71 175.13 L507.51 174.72 L508.77 174.64 L509.48 174.6 L510.51 174.27 L511.69 174.05 L512.74 173.28 L513.58 173.28 L513.63 173.89 L513.43 175.19 L513.43 176.35 L512.97 177.16 L512.34 179.56 L511.27 182.04 L509.89 184.88 L507.99 188.14 L506.09 190.62 L503.48 193.65 L501.25 195.45 L497.93 197.66 L495.86 199.35 L493.43 202.04 L492.91 203.21 L492.41 203.74 L490.86 204.63 L490.31 205.56 L489.47 205.72 L489.16 207.28 L488.44 208.18 L488.01 209.66 L487.12 210.39 L486.09 213.13 L486.22 214.39 L487.64 215.2 L487.71 215.78 L487.1 217.12 L487.23 217.8 L487.08 218.86 L487.86 220.25 L488.78 222.44 L489.59 222.93 L489.95 223.92 L489.86 226.14 L490.14 228.09 L490.22 231.56 L490.61 232.65 L489.95 234.24 L489.09 235.78 L487.67 237.16 L485.64 238 L483.14 239.08 L480.63 241.47 L479.77 241.87 L478.22 243.45 L477.3 243.96 L477.12 245.55 L478.17 247.23 L478.61 248.54 L478.64 249.2 L479.03 249.09 L478.96 251.27 L478.6 252.3 L479.13 252.68 L478.8 253.61 L477.87 254.4 L476.04 255.15 L473.36 256.35 L472.39 257.17 L472.58 258.11 L473.15 258.26 L472.96 259.43 L472.4 261.04 L472.14 262.89 L471.56 263.89 L470.05 265.02 L469.61 265.34 L468.67 266.47 L468.05 267.61 L466.79 269.2 L464.28 271.49 L462.71 272.83 L461.03 273.84 L458.71 274.7 L457.58 274.82 L457.29 275.43 L455.94 275.1 L454.84 275.53 L452.43 275.1 L451.09 275.37 L450.17 275.25 L447.87 276.13 L445.98 276.48 L444.6 277.32 L443.59 277.38 L442.65 276.58 L441.9 276.54 L440.94 275.55 L440.84 275.86 L440.54 275.26 L440.56 273.96 L439.83 272.47 L440.55 272.06 L440.49 270.36 L439.04 268.28 L437.92 266.4 L437.92 266.39 L436.32 263.5 L434.67 261.82 L433.8 260.2 L433.31 258.04 L432.76 256.43 L432.02 253.01 L431.97 250.35 L431.68 249.14 L430.82 248.22 L429.67 246.38 L428.5 243.72 L428.02 242.32 L426.21 240.15 L426.08 238.45 L425.87 237.05 L426.17 235.1 L426.94 233.06 L427.06 232.11 L427.78 230.11 L428.31 229.2 L429.58 227.74 L430.3 226.75 L430.53 225.11 L430.41 223.85 L429.75 223.05 L429.16 221.7 L428.61 220.37 L428.73 219.91 L429.41 219.03 L428.74 216.88 L428.29 215.39 L427.17 213.99 L427.38 213.56 L427.07 212.87 L426.48 211.2 L424.65 208.84 L422.37 206.6 L420.9 204.77 L419.55 202.47 L419.62 201.73 L420.11 201.02 L420.65 199.4 L421.1 197.76 L420.68 197.42 L421.44 194.92 L421.77 193.17 L420.9 191.7 L419.88 191.32 L419.43 190.33 L418.86 190.01 L418.89 189.4 L416.58 190.2 L415.74 190.08 L414.88 190.58 L413.11 190.53 L411.92 189.14 L411.19 187.53 L409.61 186.07 L407.94 186.09 L405.98 186.09 L404.15 186.35 L402.36 186.82 L398.87 188.13 L397.64 188.89 L395.63 189.53 L393.65 188.9 L392.64 188.92 L391.09 188.49 L389.67 188.51 L387.03 188.9 L385.49 189.54 L383.29 190.36 L382.86 190.3 L382.28 190.32 L379.99 189.26 L377.97 187.57 L376.08 186.35 L374.58 184.92 L373.98 184.76 L372.38 183.86 L371.22 182.67 L370.84 181.86 L370.56 180.22 L369.59 178.9 L368.72 178.03 L368.16 177.74 L367.6 177.3 L367.35 176.32 L367.02 175.83 L366.38 175.47 L365.19 174.54 L364.26 174.39 L363.75 173.76 L363.76 173.43 L363.08 172.95 L362.94 172.48 L362.57 170.77 L362.86 169.79 L361.94 168.06 L360.83 167.27 L361.81 166.85 L362.89 165.29 L363.42 164.14 L363.22 162.95 L363.84 161.85 L364.12 159.76 L363.87 157.56 L363.61 156.46 L363.83 155.35 L363.25 154.29 L362.08 153.33 L362.18 152.39 L362.28 151.37 L363.14 150.76 L363.86 149.6 L363.72 148.85 L364.48 147.28 L365.72 145.87 L366.47 145.51 L367.06 144.21 L367.11 143.03 L367.91 141.66 L369.39 140.85 L370.8 138.58 L371.96 137.69 L374.02 137.45 L375.78 135.93 L376.89 135.34 L378.74 133.48 L378.19 130.72 L379.03 128.8 L379.33 127.63 L380.76 126.13 L382.99 125.12 L384.64 124.2 L386.12 121.9 L386.82 120.53 L388.46 120.54 L389.8 121.49 L391.91 121.33 L394.21 121.82 L395.18 121.85 L397.31 120.63 L399.72 120.25 L401.12 119.33 L403.26 118.65 L407.03 118.26 L410.7 118.08 L411.82 118.41 L413.92 117.53 L416.29 117.51 L417.19 118.03 L418.71 117.9 L421.13 117 L422.69 117.27 L422.62 118.39 L424.51 117.57 L424.67 118 L423.56 119.09 L423.54 120.12 L424.31 120.67 L424.02 122.59 L422.55 123.71 L422.98 124.92 L424.13 124.96 L424.69 126.01 L425.53 126.36 L428.14 127.13 L429.07 126.94 L430.93 127.31 L433.88 128.3 L434.92 130.27 L436.91 130.71 L440.05 131.64 L442.41 132.74 L443.5 132.16 L444.56 131.14 L444.05 129.44 L444.74 128.36 L446.34 127.32 L447.87 127.01 L450.88 127.47 L451.64 128.46 L452.46 128.47 L453.17 128.85 L455.38 129.11 L455.92 129.85 L458.88 129.81 L461.02 130.4 L463.22 131.05 L464.25 131.4 L465.96 130.7 L466.88 130.06 L468.84 129.88 L470.42 130.16 L471.02 131.26 L471.54 130.53 L473.32 131.06 L475.05 131.18 L476.15 130.62 L476.79 129.89 L476.64 129.77 L477.23 128.73 L477.68 127.05 L478 126.49 L478.06 126.46 L478.85 124.65 L479.95 123.09 L480 123.01 L479.79 121.31 L480.33 120.4 L479.52 119.39 L480.36 118.55 L479 118.74 L477.14 118.23 L475.62 119.51 L472.24 119.76 L470.44 118.57 L468.05 118.49 L467.54 119.42 L466 119.68 L463.85 118.5 L461.43 118.54 L460.11 116.33 L458.49 115.09 L459.57 113.36 L458.16 112.3 L460.62 110.18 L464.04 110.09 L464.98 108.4 L469.21 108.69 L471.88 107.25 L474.47 106.62 L478.15 106.58 L482.03 108.14 L485.22 109 L487.81 108.66 L489.72 108.86 L492.34 107.7 L492.67 106.75 L492.12 105.23 L490.83 104.41 L489.6 104.16 L488.79 103.48 L485.96 101.6 L483.42 100.76 L481.5 99.46 L483.12 99.1 L484.96 97.24 L483.72 96.36 L486.99 95.46 L486.94 94.97 L484.94 95.33 L483.17 95.51 L481.69 96.23 L479.61 96.34 L477.69 97.17 L477.82 98.55 L478.91 99.09 L481.18 98.96 L480.74 99.75 L478.31 100.13 L475.29 101.42 L474.06 100.97 L474.55 99.92 L472.12 99.27 L472.51 98.85 L474.64 98.11 L474 97.6 L470.54 97.04 L470.39 96.21 L468.33 96.48 L467.51 97.71 L465.79 99.35 L465.84 99.92 L464.76 100.4 L464.08 100.19 L463.46 102.87 L462.31 103.79 L461.5 105.38 L462.21 106.65 L462.48 107.5 L464.42 108.22 L464.01 108.77 L461.38 108.89 L460.43 109.58 L458.57 110.77 L457.87 109.74 L457.9 109.28 L456.55 109.22 L455.39 109.01 L452.7 109.58 L454.24 110.83 L453.11 111.2 L451.87 111.2 L450.7 110.05 L450.28 110.54 L450.78 111.87 L451.89 112.91 L451.05 113.4 L452.29 114.42 L453.39 115.07 L453.42 116.32 L451.37 115.73 L452.02 116.87 L450.61 117.1 L451.45 119.06 L449.98 119.09 L448.16 118.12 L447.32 116.34 L446.93 114.87 L446.07 113.84 L444.93 112.58 L444.78 111.94 L444.4 111.79 L444.36 111.3 L443.12 110.55 L442.93 109.49 L443.12 107.98 L443.42 107.29 L443.05 106.94 L442.58 106.77 L441.96 106.04 L441 105.6 L438.91 104.78 L437.62 103.98 L435.59 103.32 L433.72 101.68 L434.17 101.52 L433.16 100.58 L433.11 99.83 L431.69 99.48 L431.01 100.44 L430.35 99.7 L430.4 98.92 L430.48 98.89 L430.97 98.69 L429.2 98.36 L427.4 99.15 L427.52 100.25 L427.25 100.89 L427.98 102.02 L430.06 103.14 L431.18 104.98 L433.65 106.77 L435.39 106.75 L435.93 107.24 L435.31 107.69 L437.3 108.49 L438.93 109.16 L440.84 110.32 L441.07 110.74 L440.65 111.53 L439.42 110.49 L437.49 110.13 L436.55 111.57 L438.16 112.39 L437.9 113.55 L436.97 113.68 L435.78 115.59 L434.85 115.76 L434.86 115.08 L435.32 113.89 L435.8 113.41 L434.93 112.12 L434.25 111 L433.33 110.73 L432.67 109.77 L431.25 109.36 L430.28 108.47 L428.64 108.33 L426.9 107.32 L424.87 105.88 L423.36 104.6 L422.67 102.4 L421.56 102.14 L419.75 101.41 L418.73 101.71 L417.45 102.74 L416.52 102.9 L414.51 104.16 L410.13 103.56 L406.89 104.28 L406.64 105.62 L406.75 106.91 L404.65 108.39 L401.8 108.86 L401.6 109.6 L400.24 110.84 L399.38 112.64 L400.25 113.91 L398.96 114.91 L398.48 116.35 L396.8 116.79 L395.23 118.5 L392.41 118.54 L390.29 118.49 L388.9 119.28 L388.05 120.12 L386.96 119.93 L386.14 119.18 L385.51 117.9 L383.44 117.56 L382.54 118.14 L381.37 117.82 L380.22 118.07 L380.56 116.33 L380.36 114.96 L379.36 114.76 L378.83 113.92 L379.01 112.46 L379.89 111.66 L380.05 110.76 L380.51 109.42 L380.46 108.48 L380.02 107.68 L379.92 106.93 L380.03 105.35 L379.13 104.39 L382.27 102.78 L384.99 103.18 L387.97 103.17 L390.34 103.55 L392.18 103.43 L395.77 103.5 L396.92 102.17 L397.35 97.74 L395.05 95.41 L393.42 94.29 L390.02 93.43 L389.79 91.81 L392.68 91.33 L396.41 91.9 L395.7 89.39 L397.8 90.34 L402.97 88.61 L403.64 86.79 L405.59 86.34 L407.37 85.9 L408.51 85.29 L410.46 82.02 L413.5 81.09 L415.35 81.15 L415.78 80.68 L417.64 80.56 L418.05 81.05 L419.56 79.95 L419.05 79.12 L418.95 77.86 L418.05 76.63 L417.98 74.36 L418.35 73.76 L418.99 73.09 L420.94 72.95 L421.72 72.34 L423.51 71.71 L423.44 72.85 L422.78 73.58 L423.04 74.2 L424.25 74.54 L423.71 75.37 L423.04 75.13 L421.44 76.73 L422.05 77.82 L422.09 78.67 L424.33 79.19 L424.31 79.98 L426.57 79.56 L427.82 78.95 L430.33 79.83 L431.38 80.54 L432.9 79.89 L436.36 78.86 L439.16 78.11 L441.38 78.48 L441.55 79.03 L443.69 79.05 L444.2 78.08 L447.26 77.35 L446.79 75.49 L446.87 73.81 L447.96 72.42 L450.05 71.66 L451.82 73.32 L453.6 73.28 L454.03 71.57 L454.29 70.26 L453.47 70.54 L452.06 69.75 L451.87 68.47 L454.68 67.85 L457.48 67.53 L459.89 67.9 L462.18 67.83 L464.71 66.6 L462.38 65.55 L458.35 65.72 L454.44 66.54 L450.82 67.01 L449.54 65.8 L447.38 65.07 L447.88 62.88 L446.8 60.87 L447.86 59.58 L449.87 58.18 L454.96 55.77 L456.44 55.31 L456.21 54.37 L453.12 53.32 L449.3 53.95 L447.14 55.5 L447.49 56.86 L443.95 58.65 L439.66 60.56 L438.04 63.69 L439.63 65.25 L441.75 66.48 L439.71 68.99 L437.4 69.51 L436.55 73.24 L435.29 75.32 L432.59 75.11 L431.33 76.87 L428.76 76.97 L428.06 74.87 L426.2 72.35 L424.51 69.21 L423.01 67.84 L418.63 70.41 L415.66 70.94 L412.59 69.8 L411.8 67.41 L411.09 62.29 L413.14 60.86 L419.01 58.99 L423.39 56.7 L427.46 53.6 L432.8 49.31 L436.52 47.64 L442.63 44.85 L447.51 43.88 L451.16 44 L454.55 42.15 L458.6 42.25 L462.59 41.81 L469.54 43.44 L466.68 44.03 L469.11 45.43 L471.41 44.65 L475.06 46 L481.14 46.53 L489.54 49.04 L491.24 50.09 L491.39 51.57 L488.92 52.74 L485.3 53.33 L475.37 51.65 L473.74 51.93 L477.37 53.56 L477.65 56.86 L480.51 57.53 L482.25 58.11 L482.54 57.03 L481.15 56.04 L482.61 55.24 L487.99 56.62 L489.86 56.08 L488.36 54.45 L493.54 52.27 L495.59 52.4 L497.67 53.18 L498.96 51.65 L497.11 50.33 L498.2 49 L496.56 47.62 L502.78 48.33 L504.05 49.58 L501.23 49.85 L501.25 51.09 L503 51.85 L506.43 51.37 L506.97 49.95 L511.62 48.89 L519.37 46.98 L521.05 47.09 L518.86 48.44 L521.61 48.67 L523.21 47.91 L527.37 47.85 L530.67 46.93 L533.2 48.27 L535.73 46.8 L533.4 45.51 L534.56 44.78 L541.12 45.45 L544.2 46.14 L552.25 48.68 L553.73 47.52 L551.48 46.35 L551.41 45.87 L548.73 45.66 L549.47 44.6 L548.28 42.87 L548.21 42.16 L552.31 40.15 L553.77 38.13 L555.42 37.69 L561.31 38.27 L561.77 39.51 L559.66 41.31 L561.04 42.02 L561.76 43.58 L561.25 46.62 L563.71 47.98 L562.75 49.47 L558.4 52.62 L560.94 52.95 L561.82 52.15 L564.27 51.58 L564.86 50.48 L566.78 49.42 L565.49 48.16 L566.52 46.69 L564.09 46.51 L563.56 45.27 L565.33 43.04 L562.45 41.23 L566.42 39.73 L565.91 38.15 L567.02 38.1 L568.19 39.33 L567.31 41.48 L569.69 41.88 L568.67 40.28 L572.39 39.41 L577 39.29 L581.11 40.56 L579.13 38.7 L578.91 36.34 L582.78 35.89 L588.12 35.99 L592.94 35.7 L591.13 34.53 L593.7 33.07 L596.26 33.01 L600.58 31.91 L606.45 31.61 L607.19 31.01 L613.02 30.8 L614.84 31.3 L619.83 30.12 L623.91 30.15 L624.52 29.2 L626.65 28.25 L631.89 27.34 L635.7 28.06 L632.68 28.61 L637.71 28.95 Z M191.47 27.73 L190.45 27.8 L186.29 27.66 L185.7 27.03 L190.17 27.07 L191.73 27.48 L191.47 27.73 Z M155.14 27.34 L151 27.98 L147.7 27.26 L149.5 26.55 L152.75 26.33 L155.88 26.67 L155.14 27.34 Z M454.94 26.99 L449.98 27.9 L446.06 27.38 L447.59 26.81 L446.25 26.1 L450.85 25.66 L451.74 26.49 L454.94 26.99 Z M156.3 25.33 L153.6 25.76 L149.91 25.76 L149.94 25.44 L152.22 24.78 L153.41 24.88 L156.3 25.33 Z M187.04 26.54 L183.76 27 L181.95 26.48 L180.99 25.65 L180.82 24.73 L183.7 24.82 L184.99 24.96 L187.65 25.74 L187.04 26.54 Z M177.64 25.94 L178.51 26.87 L174.88 26.62 L171.22 25.9 L166.28 25.82 L168.42 25.16 L165.73 24.63 L165.57 23.77 L169.93 24.08 L175.94 24.89 L177.64 25.94 Z M633.5 25.98 L620.97 26.84 L625.03 23.92 L626.86 23.67 L628.53 23.82 L634.16 25.08 L633.5 25.98 Z M440.56 22.88 L447.88 24.54 L442.28 25.42 L441.05 27.05 L439.1 27.47 L438.04 29.31 L435.36 29.4 L430.58 28.04 L432.6 27.25 L429.27 26.61 L424.94 24.73 L423.21 22.99 L429.27 22.2 L430.49 22.98 L433.65 22.95 L434.49 22.19 L437.76 22.11 L440.56 22.88 Z M456.55 21.32 L460.91 22.1 L457.61 23.29 L451.17 23.56 L444.61 23.18 L444.22 22.57 L441.03 22.53 L438.6 21.51 L445.46 20.89 L448.68 21.43 L450.93 20.76 L456.55 21.32 Z M513.64 21.01 L510.65 21.3 L508.65 21.47 L508.34 21.83 L505.75 22.2 L503.34 21.67 L504.61 20.98 L499.66 20.91 L504 20.51 L507.37 20.48 L507.83 21.08 L509.1 20.55 L511.2 20.18 L514.5 20.67 L513.64 21.01 Z M622.09 24.71 L617.24 24.99 L611.05 24.35 L607.36 23.5 L605.66 21.9 L602.62 21.46 L608.39 19.95 L613.2 19.44 L617.52 20.56 L622.64 22.71 L622.09 24.71 Z M206.62 22.98 L209.3 23.7 L206.25 24.36 L202.14 26.03 L198.21 26.19 L193.61 25.9 L191.22 25 L191.25 24.19 L193.01 23.6 L188.95 23.62 L186.5 22.88 L185.09 21.87 L186.63 20.88 L188.17 20.21 L190.45 20.05 L189.48 19.54 L194.64 19.43 L197.48 20.61 L201.22 21.09 L204.87 21.51 L206.62 22.98 Z M247.78 15.32 L253.72 15.49 L258.49 15.78 L262.56 16.38 L262.46 16.97 L257.04 17.94 L251.66 18.39 L249.65 18.89 L254.49 18.87 L249.24 20.22 L245.62 20.85 L241.82 22.67 L237.24 23.04 L235.82 23.49 L229.09 23.73 L232.16 24.01 L230.62 24.4 L232.46 25.5 L230.35 26.26 L226.91 26.89 L225.86 27.76 L222.76 28.42 L223.07 28.93 L226.86 28.84 L226.91 29.38 L220.98 30.72 L215.17 30.1 L208.64 30.45 L205.33 30.18 L201.13 30.06 L200.85 29 L204.96 28.49 L203.87 26.89 L205.22 26.73 L211.16 27.69 L208.13 26.27 L204.53 25.84 L206.33 24.98 L210.27 24.45 L210.9 23.68 L207.76 22.81 L206.82 21.66 L212.89 21.76 L214.65 22 L218.12 21.19 L213.11 20.93 L205.34 21.07 L201.41 20.32 L199.56 19.42 L196.96 18.77 L196.47 18.01 L199.78 17.59 L202.37 17.52 L206.73 17.16 L210 16.33 L212.76 16.44 L215.16 17.07 L216.84 15.87 L219.78 15.51 L223.76 15.27 L230.56 15.17 L231.74 15.41 L238.15 15.04 L242.96 15.18 L247.78 15.32 Z M339.78 14.4 L353.68 16.16 L349.57 17.02 L341.07 17.12 L329.11 17.33 L330.23 17.73 L338.1 17.48 L344.79 18.25 L349.1 17.57 L350.95 18.37 L348.51 19.66 L354.17 18.83 L364.96 17.97 L371.62 18.4 L372.87 19.35 L363.81 20.93 L362.56 21.44 L355.45 21.83 L360.6 21.94 L358 23.56 L356.21 25 L356.28 27.47 L358.95 28.92 L355.48 29.01 L351.82 29.72 L355.92 30.89 L356.45 32.78 L354.07 32.99 L356.95 34.9 L352.01 35.06 L354.59 35.96 L353.86 36.75 L350.73 37.09 L347.63 37.1 L350.42 38.6 L350.45 39.59 L346.05 38.67 L344.9 39.27 L347.9 39.82 L350.82 41.18 L351.66 42.97 L347.7 43.4 L345.98 42.54 L343.24 41.26 L344 42.77 L341.42 43.94 L347.27 44.04 L350.34 44.16 L344.38 46.09 L338.34 47.84 L331.84 48.61 L329.39 48.62 L327.09 49.48 L324 51.82 L319.22 53.38 L317.68 53.47 L314.72 54.02 L311.53 54.54 L309.62 55.91 L309.59 57.47 L308.47 58.93 L304.85 60.71 L305.74 62.44 L304.74 64.28 L303.6 66.45 L300.47 66.58 L297.19 64.77 L292.75 64.76 L290.59 63.54 L289.11 61.37 L285.26 58.61 L284.13 57.16 L283.83 55.16 L280.75 53.11 L281.55 51.47 L280.07 50.69 L282.27 48.09 L285.61 47.27 L286.49 46.34 L286.95 44.6 L284.41 45.39 L283.2 45.72 L281.21 46.04 L278.48 45.31 L278.33 43.8 L279.2 42.62 L281.26 42.59 L285.8 43.18 L281.98 41.77 L279.99 41.01 L277.78 41.32 L275.92 40.77 L278.4 38.7 L277.05 37.87 L275.29 36.33 L272.61 33.98 L269.78 33.11 L269.81 32.18 L263.85 30.88 L259.13 30.72 L253.19 30.81 L247.77 30.97 L245.19 30.27 L241.33 28.87 L247.16 28.17 L251.64 28.05 L242.13 27.48 L237.12 26.57 L237.42 25.71 L245.84 24.64 L253.98 23.57 L254.84 22.76 L248.84 21.96 L250.77 21.08 L258.47 19.52 L261.7 19.29 L260.78 18.29 L266.04 17.7 L272.87 17.35 L279.7 17.33 L282.13 18.03 L288.02 16.8 L293.32 17.63 L296.44 17.81 L301.06 18.53 L295.78 17.33 L296.08 16.38 L303.54 15.06 L311.34 15.16 L314.17 14.34 L322.03 14.12 L339.78 14.4 Z" />
+      </g>
+        <use href="#continents" x="-800" />
+        <use href="#continents" x="800" />
+
+      <!-- Grid lines (subtle) -->
+      <g id="grid" stroke="#666" stroke-width="0.5" opacity="0.2">
+        <line x1="133.33" y1="0" x2="133.33" y2="400"/>
+        <line x1="266.67" y1="0" x2="266.67" y2="400"/>
+        <line x1="400" y1="0" x2="400" y2="400"/>
+        <line x1="533.33" y1="0" x2="533.33" y2="400"/>
+        <line x1="666.67" y1="0" x2="666.67" y2="400"/>
+        <line x1="0" y1="100" x2="800" y2="100"/>
+        <line x1="0" y1="200" x2="800" y2="200"/>
+        <line x1="0" y1="300" x2="800" y2="300"/>
+      </g>
+        <use href="#grid" x="-800" />
+        <use href="#grid" x="800" />
+
+      <!-- Equator -->
+      <line id="equator-line" x1="0" y1="200" x2="800" y2="200" stroke="#444" stroke-width="1" opacity="0.3"/>
+        <use href="#equator-line" x="-800" />
+        <use href="#equator-line" x="800" />
+      </g>
+
+      <!-- Day/night curved terminator (fixed) -->
+      <g id="terminator-wrap">
+        <path id="day-night-terminator" />
+        <use href="#day-night-terminator" x="-800" />
+        <use href="#day-night-terminator" x="800" />
+        <path id="day-night-edge" />
+        <use href="#day-night-edge" x="-800" />
+        <use href="#day-night-edge" x="800" />
+      </g>
+
+      <!-- Timezone markers -->
+      <g id="timezone-markers"></g>
+      <g id="timezone-labels"></g>
+      <g id="timezone-tooltip" visibility="hidden">
+        <rect id="timezone-tooltip-bg" rx="3" ry="3"></rect>
+        <text id="timezone-tooltip-text"></text>
+      </g>
+
+      <!-- Time labels below map -->
+      <g id="time-labels" font-size="10" fill="#222" font-weight="500" text-anchor="middle"></g>
+    </svg>
+  </div>
+
+  <div class="share-section">
+    <h2>Share</h2>
+    <p>Share URLs include the selected time and time zones.</p>
+    <div class="share-buttons">
+      <button type="button" class="share-btn" id="share-native" style="display:none">Share</button>
+      <button type="button" class="share-btn" id="copy-link">Link</button>
+      <button type="button" class="share-btn" id="copy-markdown">Markdown</button>
+      <button type="button" class="share-btn" id="copy-discord">Discord</button>
+    </div>
+  </div>
+
+  <div class="iso-display" id="iso-display"></div>
+
+  <script>
+    (function () {
+      // Map data is embedded in the SVG
+
+      // Populate timezone autocomplete
+      const timezoneList = document.getElementById('timezone-list');
+      function populateTimezoneList() {
+        timezoneList.innerHTML = '';
+        const recent = JSON.parse(localStorage.getItem('thistime_recent_zones') || '[]');
+        const allZones = typeof Intl.supportedValuesOf === 'function'
+          ? Intl.supportedValuesOf('timeZone')
+          : [];
+        const seen = new Set();
+        recent.forEach(tz => {
+          if (!seen.has(tz.toLowerCase())) {
+            seen.add(tz.toLowerCase());
+            const option = document.createElement('option');
+            option.value = tz;
+            timezoneList.appendChild(option);
+          }
+        });
+        allZones.forEach(tz => {
+          if (!seen.has(tz.toLowerCase())) {
+            seen.add(tz.toLowerCase());
+            const option = document.createElement('option');
+            option.value = tz;
+            timezoneList.appendChild(option);
+          }
+        });
+      }
+      populateTimezoneList();
+
+      // Elements
+      const appEl = document.querySelector('.app');
+      const zonesContainerEl = document.getElementById('zones-container');
+      const formEl = document.getElementById('zone-form');
+      const inputEl = document.getElementById('zone-input');
+      const feedbackEl = document.getElementById('zone-feedback');
+      const reticuleEl = document.getElementById('slider-reticule');
+      const worldMapEl = document.getElementById('world-map');
+      const earthWrapEl = document.getElementById('earth-wrap');
+      const terminatorWrapEl = document.getElementById('terminator-wrap');
+      const isoDisplayEl = document.getElementById('iso-display');
+      const shareNativeBtn = document.getElementById('share-native');
+      const copyLinkBtn = document.getElementById('copy-link');
+      const copyMarkdownBtn = document.getElementById('copy-markdown');
+      const copyDiscordBtn = document.getElementById('copy-discord');
+      let urlUpdateTimer;
+
+      let activeEditorZone = null;
+      let shouldFocusEditor = false;
+
+      const reticuleWidthPx = (() => {
+        const raw = getComputedStyle(document.documentElement)
+          .getPropertyValue('--slider-thumb-size')
+          .trim();
+        const parsed = parseFloat(raw);
+        return Number.isFinite(parsed) ? parsed : 44;
+      })();
+
+      const offsetMinMinutes = -12 * 60;
+      const offsetMaxMinutes = 12 * 60;
+      const offsetRangeMinutes = offsetMaxMinutes - offsetMinMinutes;
+      const offsetStepMinutes = 5;
+      let offsetMinutes = 0;
+
+      function snapInstantToSliderStep(date) {
+        const stepMs = offsetStepMinutes * 60000;
+        return new Date(Math.floor(date.getTime() / stepMs) * stepMs);
+      }
+
+      function getTimeAxisRect() {
+        const inset = reticuleWidthPx / 2;
+        const mapRect = worldMapEl ? worldMapEl.getBoundingClientRect() : null;
+        if (mapRect && mapRect.width > inset * 2) {
+          const startX = mapRect.left + inset;
+          const endX = mapRect.right - inset;
+          return {
+            startX,
+            endX,
+            width: endX - startX
+          };
+        }
+        const appRect = appEl.getBoundingClientRect();
+        const startX = appRect.left + inset;
+        const endX = appRect.right - inset;
+        return {
+          startX,
+          endX,
+          width: endX - startX
+        };
+      }
+
+      if (navigator.share) {
+        shareNativeBtn.style.display = '';
+      }
+
+      const STORAGE_KEY = 'thistime_recent_zones';
+      function getRecentZones() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+        } catch { return []; }
+      }
+      function saveRecentZone(zone) {
+        const recent = getRecentZones().filter(z => z.toLowerCase() !== zone.toLowerCase());
+        recent.unshift(zone);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(recent.slice(0, 10)));
+      }
+
+      // Parse URL params
+      const params = new URLSearchParams(window.location.search);
+      const isoInstantParam = params.get('isoInstant');
+
+      let baseInstant;
+      if (isoInstantParam) {
+        baseInstant = new Date(isoInstantParam);
+        if (Number.isNaN(baseInstant.getTime())) {
+          zonesContainerEl.innerHTML = '<p>Invalid timestamp</p>';
+          return;
+        }
+      } else {
+        baseInstant = new Date();
+      }
+
+      baseInstant = snapInstantToSliderStep(baseInstant);
+      let currentInstant = new Date(baseInstant.getTime());
+      const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+
+      // Track user-added zones
+      const zonesParam = params.get('timeZones');
+      const seenZones = new Set();
+      seenZones.add(localZone.toLowerCase());
+
+      const userZones = [];
+      if (zonesParam) {
+        zonesParam.split(',').map(z => z.trim()).filter(Boolean).forEach(zone => {
+          const lower = zone.toLowerCase();
+          if (!seenZones.has(lower)) {
+            seenZones.add(lower);
+            userZones.push(zone);
+          }
+        });
+      }
+
+      // Formatters
+      function formatZoneTime(date, zone) {
+        return new Intl.DateTimeFormat(undefined, {
+          timeZone: zone,
+          weekday: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(date);
+      }
+
+      function formatShortTime(date, zone) {
+        return new Intl.DateTimeFormat(undefined, {
+          timeZone: zone,
+          weekday: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(date);
+      }
+
+      function formatMarkerTime(date, zone) {
+        return new Intl.DateTimeFormat(undefined, {
+          timeZone: zone,
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }).format(date);
+      }
+
+      function chooseMarkerStepMinutes(axisWidthPx) {
+        const rangeMinutes = offsetRangeMinutes;
+
+        const minLabelSpacingPx = 56;
+        const stepCandidates = [60, 120, 180, 240, 360, 720];
+        for (const stepMinutes of stepCandidates) {
+          const tickCount = rangeMinutes / stepMinutes + 1;
+          const pxPerTick = axisWidthPx / (tickCount - 1);
+          if (pxPerTick >= minLabelSpacingPx) {
+            return stepMinutes;
+          }
+        }
+        return 720;
+      }
+
+      function getMarkerOffsetsMinutes(axisWidthPx) {
+        const stepMinutes = chooseMarkerStepMinutes(axisWidthPx);
+
+        const sliderMin = offsetMinMinutes;
+        const sliderMax = offsetMaxMinutes;
+        const offsets = [];
+
+        for (let offset = sliderMin; offset <= sliderMax; offset += stepMinutes) {
+          offsets.push(offset);
+        }
+        if (offsets[offsets.length - 1] !== sliderMax) {
+          offsets.push(sliderMax);
+        }
+        return offsets;
+      }
+
+      // Offset helper functions
+      function getUtcOffsetMinutes(date, zone) {
+        const utcParts = new Intl.DateTimeFormat('en-US', {
+          timeZone: 'UTC',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false
+        }).formatToParts(date);
+
+        const zoneParts = new Intl.DateTimeFormat('en-US', {
+          timeZone: zone,
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false
+        }).formatToParts(date);
+
+        const getPart = (parts, type) => parseInt(parts.find(p => p.type === type).value, 10);
+
+        const utcDate = new Date(Date.UTC(
+          getPart(utcParts, 'year'),
+          getPart(utcParts, 'month') - 1,
+          getPart(utcParts, 'day'),
+          getPart(utcParts, 'hour') % 24,
+          getPart(utcParts, 'minute'),
+          getPart(utcParts, 'second')
+        ));
+
+        const zoneDate = new Date(Date.UTC(
+          getPart(zoneParts, 'year'),
+          getPart(zoneParts, 'month') - 1,
+          getPart(zoneParts, 'day'),
+          getPart(zoneParts, 'hour') % 24,
+          getPart(zoneParts, 'minute'),
+          getPart(zoneParts, 'second')
+        ));
+
+        return (zoneDate - utcDate) / 60000;
+      }
+
+      function getLocalOffsetMinutes(date, zone) {
+        const zoneOffset = getUtcOffsetMinutes(date, zone);
+        const localOffset = -date.getTimezoneOffset();
+        return zoneOffset - localOffset;
+      }
+
+      function formatOffset(minutes) {
+        const sign = minutes >= 0 ? '+' : '-';
+        const abs = Math.abs(minutes);
+        const hours = Math.floor(abs / 60);
+        const mins = abs % 60;
+        if (mins === 0) {
+          return sign + hours + 'h';
+        }
+        return sign + hours + ':' + String(mins).padStart(2, '0');
+      }
+
+      function updateUrl() {
+        const url = new URL(window.location.href);
+        url.searchParams.set('isoInstant', currentInstant.toISOString());
+        const allTzs = [localZone].concat(userZones);
+        url.searchParams.set('timeZones', allTzs.join(','));
+        window.history.replaceState(null, '', url.toString());
+      }
+
+      function renderZoneMarkers(markersEl, zone, markerOffsetsMinutes) {
+        markersEl.innerHTML = '';
+
+        const sliderMin = offsetMinMinutes;
+        const sliderMax = offsetMaxMinutes;
+
+        markerOffsetsMinutes.forEach(offsetMinutes => {
+          const marker = document.createElement('div');
+          marker.className = 'zone-marker';
+          marker.dataset.offsetMinutes = String(offsetMinutes);
+          if (offsetMinutes === sliderMin) marker.classList.add('edge-left');
+          if (offsetMinutes === sliderMax) marker.classList.add('edge-right');
+          if (offsetMinutes === 0) marker.classList.add('is-zero');
+
+          const tick = document.createElement('div');
+          tick.className = 'tick';
+
+          const label = document.createElement('div');
+          label.className = 'label';
+          label.textContent = formatMarkerTime(
+            new Date(baseInstant.getTime() + offsetMinutes * 60000),
+            zone
+          );
+
+          marker.appendChild(tick);
+          marker.appendChild(label);
+          markersEl.appendChild(marker);
+        });
+      }
+
+      function positionZoneMarkers(markersEl, sliderAxisRect, sliderMin, rangeMinutes) {
+        const markersRect = markersEl.getBoundingClientRect();
+        const axisStart = sliderAxisRect.startX - markersRect.left;
+        const axisWidth = sliderAxisRect.width;
+        const axisEnd = axisStart + axisWidth;
+
+        markersEl.style.setProperty('--axis-left', axisStart + 'px');
+        markersEl.style.setProperty('--axis-right', (markersRect.width - axisEnd) + 'px');
+
+        markersEl.querySelectorAll('.zone-marker').forEach(markerEl => {
+          const offsetMinutes = parseInt(markerEl.dataset.offsetMinutes, 10);
+          const ratio = (offsetMinutes - sliderMin) / rangeMinutes;
+          const x = axisStart + ratio * axisWidth;
+          markerEl.style.left = x + 'px';
+        });
+
+        const nowBtn = markersEl.querySelector('.zone-now-center');
+        if (nowBtn) {
+          const ratioNow = (0 - sliderMin) / rangeMinutes;
+          const xNow = axisStart + ratioNow * axisWidth;
+          nowBtn.style.left = xNow + 'px';
+
+          const ratioReticule = (offsetMinutes - sliderMin) / rangeMinutes;
+          const xReticule = axisStart + ratioReticule * axisWidth;
+          const overlapThresholdPx = (reticuleWidthPx / 2) + 22;
+          nowBtn.hidden = Math.abs(xReticule - xNow) < overlapThresholdPx;
+          markersEl.classList.toggle('hide-zero-label', !nowBtn.hidden);
+        } else {
+          markersEl.classList.remove('hide-zero-label');
+        }
+      }
+
+      function updateReticule(sliderAxisRect) {
+        if (!reticuleEl) return;
+
+        const appRect = appEl.getBoundingClientRect();
+
+        const ratio = (offsetMinutes - offsetMinMinutes) / offsetRangeMinutes;
+
+        const axis = sliderAxisRect || getTimeAxisRect();
+        const xViewport = axis.startX + ratio * axis.width;
+        const x = xViewport - appRect.left;
+
+        const cards = Array.from(zonesContainerEl.querySelectorAll('.zone-card'));
+        let minTop = Infinity;
+        let maxBottom = -Infinity;
+        cards.forEach(cardEl => {
+          const rect = cardEl.getBoundingClientRect();
+          if (rect.height <= 0) return;
+          minTop = Math.min(minTop, rect.top);
+          maxBottom = Math.max(maxBottom, rect.bottom);
+        });
+
+        reticuleEl.innerHTML = '';
+        if (!Number.isFinite(minTop) || !Number.isFinite(maxBottom) || maxBottom <= minTop) {
+          reticuleEl.style.display = 'none';
+          return;
+        }
+
+        reticuleEl.style.display = 'block';
+        const extraPx = 6;
+        const top = (minTop - appRect.top) - extraPx;
+        const height = (maxBottom - minTop) + extraPx * 2;
+        const line = document.createElement('div');
+        line.className = 'slider-reticule-segment';
+        line.style.left = x + 'px';
+        line.style.top = top + 'px';
+        line.style.height = height + 'px';
+        reticuleEl.appendChild(line);
+      }
+
+      function renderZones() {
+        zonesContainerEl.innerHTML = '';
+        const sliderAxisRect = getTimeAxisRect();
+        const sliderMin = offsetMinMinutes;
+        const sliderMax = offsetMaxMinutes;
+        const rangeMinutes = sliderMax - sliderMin;
+        const allZones = [{ zone: localZone, isHero: true }]
+          .concat(userZones.map(z => ({ zone: z, isHero: false })));
+        const markerOffsetsMinutes = getMarkerOffsetsMinutes(sliderAxisRect.width);
+
+        allZones.forEach(({ zone, isHero }) => {
+          const card = document.createElement('div');
+          card.className = 'zone-card' + (isHero ? ' hero' : '');
+
+          const nameSpan = document.createElement('span');
+          nameSpan.className = 'zone-name';
+          nameSpan.textContent = zone;
+
+          let timeEl;
+          if (activeEditorZone === zone) {
+            const input = document.createElement('input');
+            input.type = 'datetime-local';
+            input.step = String(offsetStepMinutes * 60);
+            input.lang = 'en-GB';
+            input.className = 'zone-time zone-time-input';
+            input.setAttribute('aria-label', 'Set time in ' + zone);
+            input.value = formatDateTimeLocalValueForZone(currentInstant, zone);
+            input.addEventListener('change', () => {
+              const parts = parseDateTimeLocalValue(input.value);
+              if (!parts) return;
+              const newInstant = zoneLocalPartsToInstant(parts, zone);
+              activeEditorZone = null;
+              shouldFocusEditor = false;
+              const deltaMinutes = (newInstant.getTime() - baseInstant.getTime()) / 60000;
+              setOffsetMinutes(deltaMinutes);
+            });
+            input.addEventListener('blur', () => {
+              if (activeEditorZone !== zone) return;
+              activeEditorZone = null;
+              shouldFocusEditor = false;
+              renderAll();
+            });
+            input.addEventListener('keydown', (e) => {
+              if (e.key === 'Escape') {
+                e.preventDefault();
+                activeEditorZone = null;
+                shouldFocusEditor = false;
+                renderAll();
+              }
+            });
+            timeEl = input;
+          } else {
+            const timeBtn = document.createElement('button');
+            timeBtn.type = 'button';
+            timeBtn.className = 'zone-time zone-time-edit';
+            timeBtn.textContent = formatShortTime(currentInstant, zone);
+            timeBtn.setAttribute('aria-label', 'Set time in ' + zone);
+            timeBtn.addEventListener('click', () => {
+              activeEditorZone = zone;
+              shouldFocusEditor = true;
+              renderAll();
+            });
+            timeEl = timeBtn;
+          }
+
+          const utcOffset = getUtcOffsetMinutes(currentInstant, zone);
+          const utcSpan = document.createElement('span');
+          utcSpan.className = 'zone-offset-utc';
+          utcSpan.textContent = 'UTC' + formatOffset(utcOffset);
+
+          const localOffset = getLocalOffsetMinutes(currentInstant, zone);
+          const localSpan = document.createElement('span');
+          localSpan.className = 'zone-offset-local';
+          if (localOffset !== 0) {
+            localSpan.textContent = formatOffset(localOffset);
+          } else {
+            localSpan.textContent = 'your timezone';
+          }
+
+          card.appendChild(nameSpan);
+          card.appendChild(timeEl);
+          card.appendChild(utcSpan);
+          card.appendChild(localSpan);
+
+          const markersEl = document.createElement('div');
+          markersEl.className = 'zone-markers';
+          if (!isHero) markersEl.setAttribute('aria-hidden', 'true');
+          renderZoneMarkers(markersEl, zone, markerOffsetsMinutes);
+          if (isHero) {
+            const nowBtn = document.createElement('button');
+            nowBtn.type = 'button';
+            nowBtn.className = 'zone-now-center';
+            nowBtn.textContent = 'now';
+            nowBtn.setAttribute('aria-label', 'Set time to now');
+            nowBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              resetNow();
+            });
+            markersEl.appendChild(nowBtn);
+          }
+          card.appendChild(markersEl);
+
+          if (!isHero) {
+            const removeBtn = document.createElement('button');
+            removeBtn.className = 'zone-remove';
+            removeBtn.type = 'button';
+            removeBtn.innerHTML = '&times;';
+            removeBtn.setAttribute('aria-label', 'Remove ' + zone);
+            removeBtn.onclick = () => removeZone(zone);
+            card.appendChild(removeBtn);
+          }
+
+          zonesContainerEl.appendChild(card);
+
+          positionZoneMarkers(markersEl, sliderAxisRect, sliderMin, rangeMinutes);
+
+          // No extra editor UI; native datetime-local is shown inline in the card.
+        });
+
+        updateReticule(sliderAxisRect);
+      }
+
+      function renderIso() {
+        const utcStr = currentInstant.toISOString();
+
+        const pad = n => String(n).padStart(2, '0');
+        const offsetMins = -currentInstant.getTimezoneOffset();
+        const offsetSign = offsetMins >= 0 ? '+' : '-';
+        const offsetHrs = pad(Math.floor(Math.abs(offsetMins) / 60));
+        const offsetRemMins = pad(Math.abs(offsetMins) % 60);
+        const offsetStr = offsetSign + offsetHrs + ':' + offsetRemMins;
+
+        const localStr = currentInstant.getFullYear() + '-' +
+          pad(currentInstant.getMonth() + 1) + '-' +
+          pad(currentInstant.getDate()) + 'T' +
+          pad(currentInstant.getHours()) + ':' +
+          pad(currentInstant.getMinutes()) + ':' +
+          pad(currentInstant.getSeconds()) + offsetStr;
+
+        isoDisplayEl.innerHTML =
+          '<div><span class="iso-label">UTC: </span><span class="iso-value">' + utcStr + '</span></div>' +
+          '<div><span class="iso-label">Local: </span><span class="iso-value">' + localStr + '</span></div>';
+      }
+
+      const pad2 = (n) => String(n).padStart(2, '0');
+
+      function parseDateTimeLocalValue(value) {
+        if (!value) return null;
+        const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+        if (!match) return null;
+        const year = parseInt(match[1], 10);
+        const month = parseInt(match[2], 10);
+        const day = parseInt(match[3], 10);
+        const hour = parseInt(match[4], 10);
+        const minute = parseInt(match[5], 10);
+        if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day) ||
+          !Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+        return { year, month, day, hour, minute };
+      }
+
+      function getZoneDateTimeParts(date, zone) {
+        const parts = new Intl.DateTimeFormat('en-GB', {
+          timeZone: zone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hourCycle: 'h23'
+        }).formatToParts(date);
+        const getPart = (type) => parts.find(p => p.type === type)?.value ?? '';
+        return {
+          year: getPart('year'),
+          month: getPart('month'),
+          day: getPart('day'),
+          hour: getPart('hour'),
+          minute: getPart('minute')
+        };
+      }
+
+      function formatDateTimeLocalValueForZone(date, zone) {
+        const p = getZoneDateTimeParts(date, zone);
+        return p.year + '-' + p.month + '-' + p.day + 'T' + p.hour + ':' + p.minute;
+      }
+
+      function zoneLocalPartsToInstant(localParts, zone) {
+        const localMs = Date.UTC(
+          localParts.year,
+          localParts.month - 1,
+          localParts.day,
+          localParts.hour,
+          localParts.minute,
+          0,
+          0
+        );
+
+        let utcMs = localMs;
+        for (let i = 0; i < 4; i++) {
+          const offsetMinutes = getUtcOffsetMinutes(new Date(utcMs), zone);
+          const nextUtcMs = localMs - offsetMinutes * 60000;
+          if (Math.abs(nextUtcMs - utcMs) < 1000) {
+            utcMs = nextUtcMs;
+            break;
+          }
+          utcMs = nextUtcMs;
+        }
+
+        return new Date(utcMs);
+      }
+
+      function renderAll() {
+        renderZones();
+        renderIso();
+        renderMap();
+
+        if (!shouldFocusEditor) return;
+        shouldFocusEditor = false;
+        const editorInputEl = zonesContainerEl.querySelector('.zone-time-input');
+        if (!editorInputEl) return;
+        try {
+          editorInputEl.focus({ preventScroll: true });
+        } catch {
+          editorInputEl.focus();
+        }
+        if (typeof editorInputEl.showPicker === 'function') {
+          try { editorInputEl.showPicker(); } catch {}
+        }
+      }
+
+      // Map rendering
+      const MAP_WIDTH = 800;
+      const MAP_HEIGHT = 400;
+
+      function lonToX(lon) {
+        return (lon + 180) * (MAP_WIDTH / 360);
+      }
+
+      function latToY(lat) {
+        return (90 - lat) * (MAP_HEIGHT / 180);
+      }
+
+      function getDayOfYear(date) {
+        const start = Date.UTC(date.getUTCFullYear(), 0, 1);
+        return Math.floor((date.getTime() - start) / 86400000) + 1;
+      }
+
+      function getSolarParams(date) {
+        const dayOfYear = getDayOfYear(date);
+        const utcHours = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+        const gamma = (2 * Math.PI / 365) * (dayOfYear - 1 + (utcHours - 12) / 24);
+
+        const equationOfTime = 229.18 * (
+          0.000075 +
+          0.001868 * Math.cos(gamma) -
+          0.032077 * Math.sin(gamma) -
+          0.014615 * Math.cos(2 * gamma) -
+          0.040849 * Math.sin(2 * gamma)
+        );
+
+        const declination = 0.006918 -
+          0.399912 * Math.cos(gamma) +
+          0.070257 * Math.sin(gamma) -
+          0.006758 * Math.cos(2 * gamma) +
+          0.000907 * Math.sin(2 * gamma) -
+          0.002697 * Math.cos(3 * gamma) +
+          0.00148 * Math.sin(3 * gamma);
+
+        return { equationOfTime, declination };
+      }
+
+      function getSolarHourAngle(date, longitude, solarParams) {
+        const minutes = date.getUTCHours() * 60 + date.getUTCMinutes() + date.getUTCSeconds() / 60;
+        const trueSolarTime = (minutes + solarParams.equationOfTime + 4 * longitude) % 1440;
+        const normalizedTime = (trueSolarTime + 1440) % 1440;
+        let hourAngle = (normalizedTime / 4) - 180;
+        if (hourAngle < -180) hourAngle += 360;
+        return hourAngle;
+      }
+
+      function getSolarAltitude(date, lat, lon, solarParams) {
+        const latRad = lat * Math.PI / 180;
+        const ha = getSolarHourAngle(date, lon, solarParams) * Math.PI / 180;
+        const sinAlt = Math.sin(latRad) * Math.sin(solarParams.declination) +
+          Math.cos(latRad) * Math.cos(solarParams.declination) * Math.cos(ha);
+        return Math.asin(sinAlt);
+      }
+
+      function renderDayNightTerminator(date) {
+        const terminatorPath = document.getElementById('day-night-terminator');
+        const terminatorEdgePath = document.getElementById('day-night-edge');
+        const solarParams = getSolarParams(date);
+        const declination = solarParams.declination;
+
+        // Calculate terminator curve - sample every 1 degree for smoother curve
+        const terminatorPoints = [];
+        for (let lon = -180; lon <= 180; lon += 1) {
+          const hourAngle = getSolarHourAngle(date, lon, solarParams);
+          const ha = hourAngle * Math.PI / 180;
+          const tanDec = Math.tan(declination);
+
+          if (Math.abs(tanDec) < 0.00001) {
+            terminatorPoints.push({ lon, lat: 0 });
+            continue;
+          }
+
+          const lat = Math.atan(-Math.cos(ha) / tanDec) * 180 / Math.PI;
+          terminatorPoints.push({ lon, lat });
+        }
+
+        const northPoleNight = getSolarAltitude(date, 90, 0, solarParams) < 0;
+
+        let edgeData = `M ${lonToX(-180)},${latToY(terminatorPoints[0].lat)} `;
+        for (let i = 1; i < terminatorPoints.length; i++) {
+          edgeData += `L ${lonToX(terminatorPoints[i].lon)},${latToY(terminatorPoints[i].lat)} `;
+        }
+
+        // Build path
+        let pathData;
+
+        if (northPoleNight) {
+          pathData = `M ${lonToX(-180)},${latToY(terminatorPoints[0].lat)} `;
+          for (let i = 0; i < terminatorPoints.length; i++) {
+            pathData += `L ${lonToX(terminatorPoints[i].lon)},${latToY(terminatorPoints[i].lat)} `;
+          }
+          pathData += `L ${lonToX(180)},0 L ${lonToX(-180)},0 Z`;
+        } else {
+          pathData = `M ${lonToX(-180)},${latToY(terminatorPoints[0].lat)} `;
+          for (let i = 0; i < terminatorPoints.length; i++) {
+            pathData += `L ${lonToX(terminatorPoints[i].lon)},${latToY(terminatorPoints[i].lat)} `;
+          }
+          pathData += `L ${lonToX(180)},${MAP_HEIGHT} L ${lonToX(-180)},${MAP_HEIGHT} Z`;
+        }
+
+        terminatorPath.setAttribute('d', pathData);
+        if (terminatorEdgePath) {
+          terminatorEdgePath.setAttribute('d', edgeData);
+        }
+      }
+
+      // Timezone coordinate database (representative cities)
+      const TIMEZONE_COORDS = {
+        'Africa/Abidjan': [5.3167, -4.0333],
+        'Africa/Algiers': [36.7833, 3.0500],
+        'Africa/Bissau': [11.8500, -15.5833],
+        'Africa/Cairo': [30.0500, 31.2500],
+        'Africa/Casablanca': [33.6500, -7.5833],
+        'Africa/Ceuta': [35.8833, -5.3167],
+        'Africa/El_Aaiun': [27.1500, -13.2000],
+        'Africa/Johannesburg': [-26.2500, 28.0000],
+        'Africa/Juba': [4.8500, 31.6167],
+        'Africa/Khartoum': [15.6000, 32.5333],
+        'Africa/Lagos': [6.4500, 3.4000],
+        'Africa/Maputo': [-25.9667, 32.5833],
+        'Africa/Monrovia': [6.3000, -10.7833],
+        'Africa/Nairobi': [-1.2833, 36.8167],
+        'Africa/Ndjamena': [12.1167, 15.0500],
+        'Africa/Sao_Tome': [0.3333, 6.7333],
+        'Africa/Tripoli': [32.9000, 13.1833],
+        'Africa/Tunis': [36.8000, 10.1833],
+        'Africa/Windhoek': [-22.5667, 17.1000],
+        'America/Adak': [51.8800, -176.6581],
+        'America/Anchorage': [61.2181, -149.9003],
+        'America/Araguaina': [-7.2000, -48.2000],
+        'America/Argentina/Buenos_Aires': [-34.6000, -58.4500],
+        'America/Argentina/Catamarca': [-28.4667, -65.7833],
+        'America/Argentina/Cordoba': [-31.4000, -64.1833],
+        'America/Argentina/Jujuy': [-24.1833, -65.3000],
+        'America/Argentina/La_Rioja': [-29.4333, -66.8500],
+        'America/Argentina/Mendoza': [-32.8833, -68.8167],
+        'America/Argentina/Rio_Gallegos': [-51.6333, -69.2167],
+        'America/Argentina/Salta': [-24.7833, -65.4167],
+        'America/Argentina/San_Juan': [-31.5333, -68.5167],
+        'America/Argentina/San_Luis': [-33.3167, -66.3500],
+        'America/Argentina/Tucuman': [-26.8167, -65.2167],
+        'America/Argentina/Ushuaia': [-54.8000, -68.3000],
+        'America/Asuncion': [-25.2667, -57.6667],
+        'America/Bahia': [-12.9833, -38.5167],
+        'America/Bahia_Banderas': [20.8000, -105.2500],
+        'America/Barbados': [13.1000, -59.6167],
+        'America/Belem': [-1.4500, -48.4833],
+        'America/Belize': [17.5000, -88.2000],
+        'America/Boa_Vista': [2.8167, -60.6667],
+        'America/Bogota': [4.6000, -74.0833],
+        'America/Boise': [43.6136, -116.2025],
+        'America/Cambridge_Bay': [69.1139, -105.0528],
+        'America/Campo_Grande': [-20.4500, -54.6167],
+        'America/Cancun': [21.0833, -86.7667],
+        'America/Caracas': [10.5000, -66.9333],
+        'America/Cayenne': [4.9333, -52.3333],
+        'America/Chicago': [41.8500, -87.6500],
+        'America/Chihuahua': [28.6333, -106.0833],
+        'America/Ciudad_Juarez': [31.7333, -106.4833],
+        'America/Costa_Rica': [9.9333, -84.0833],
+        'America/Coyhaique': [-45.5667, -72.0667],
+        'America/Cuiaba': [-15.5833, -56.0833],
+        'America/Danmarkshavn': [76.7667, -18.6667],
+        'America/Dawson': [64.0667, -139.4167],
+        'America/Dawson_Creek': [55.7667, -120.2333],
+        'America/Denver': [39.7392, -104.9842],
+        'America/Detroit': [42.3314, -83.0458],
+        'America/Edmonton': [53.5500, -113.4667],
+        'America/Eirunepe': [-6.6667, -69.8667],
+        'America/El_Salvador': [13.7000, -89.2000],
+        'America/Fort_Nelson': [58.8000, -122.7000],
+        'America/Fortaleza': [-3.7167, -38.5000],
+        'America/Glace_Bay': [46.2000, -59.9500],
+        'America/Goose_Bay': [53.3333, -60.4167],
+        'America/Grand_Turk': [21.4667, -71.1333],
+        'America/Guatemala': [14.6333, -90.5167],
+        'America/Guayaquil': [-2.1667, -79.8333],
+        'America/Guyana': [6.8000, -58.1667],
+        'America/Halifax': [44.6500, -63.6000],
+        'America/Havana': [23.1333, -82.3667],
+        'America/Hermosillo': [29.0667, -110.9667],
+        'America/Indiana/Indianapolis': [39.7683, -86.1581],
+        'America/Indiana/Knox': [41.2958, -86.6250],
+        'America/Indiana/Marengo': [38.3756, -86.3447],
+        'America/Indiana/Petersburg': [38.4919, -87.2786],
+        'America/Indiana/Tell_City': [37.9531, -86.7614],
+        'America/Indiana/Vevay': [38.7478, -85.0672],
+        'America/Indiana/Vincennes': [38.6772, -87.5286],
+        'America/Indiana/Winamac': [41.0514, -86.6031],
+        'America/Inuvik': [68.3497, -133.7167],
+        'America/Iqaluit': [63.7333, -68.4667],
+        'America/Jamaica': [17.9681, -76.7933],
+        'America/Juneau': [58.3019, -134.4197],
+        'America/Kentucky/Louisville': [38.2542, -85.7594],
+        'America/Kentucky/Monticello': [36.8297, -84.8492],
+        'America/La_Paz': [-16.5000, -68.1500],
+        'America/Lima': [-12.0500, -77.0500],
+        'America/Los_Angeles': [34.0522, -118.2428],
+        'America/Maceio': [-9.6667, -35.7167],
+        'America/Managua': [12.1500, -86.2833],
+        'America/Manaus': [-3.1333, -60.0167],
+        'America/Martinique': [14.6000, -61.0833],
+        'America/Matamoros': [25.8333, -97.5000],
+        'America/Mazatlan': [23.2167, -106.4167],
+        'America/Menominee': [45.1078, -87.6142],
+        'America/Merida': [20.9667, -89.6167],
+        'America/Metlakatla': [55.1269, -131.5764],
+        'America/Mexico_City': [19.4000, -99.1500],
+        'America/Miquelon': [47.0500, -56.3333],
+        'America/Moncton': [46.1000, -64.7833],
+        'America/Monterrey': [25.6667, -100.3167],
+        'America/Montevideo': [-34.9092, -56.2125],
+        'America/New_York': [40.7142, -74.0064],
+        'America/Nome': [64.5011, -165.4064],
+        'America/Noronha': [-3.8500, -32.4167],
+        'America/North_Dakota/Beulah': [47.2642, -101.7778],
+        'America/North_Dakota/Center': [47.1164, -101.2992],
+        'America/North_Dakota/New_Salem': [46.8450, -101.4108],
+        'America/Nuuk': [64.1833, -51.7333],
+        'America/Ojinaga': [29.5667, -104.4167],
+        'America/Panama': [8.9667, -79.5333],
+        'America/Paramaribo': [5.8333, -55.1667],
+        'America/Phoenix': [33.4483, -112.0733],
+        'America/Port-au-Prince': [18.5333, -72.3333],
+        'America/Porto_Velho': [-8.7667, -63.9000],
+        'America/Puerto_Rico': [18.4683, -66.1061],
+        'America/Punta_Arenas': [-53.1500, -70.9167],
+        'America/Rankin_Inlet': [62.8167, -92.0831],
+        'America/Recife': [-8.0500, -34.9000],
+        'America/Regina': [50.4000, -104.6500],
+        'America/Resolute': [74.6956, -94.8292],
+        'America/Rio_Branco': [-9.9667, -67.8000],
+        'America/Santarem': [-2.4333, -54.8667],
+        'America/Santiago': [-33.4500, -70.6667],
+        'America/Santo_Domingo': [18.4667, -69.9000],
+        'America/Sao_Paulo': [-23.5333, -46.6167],
+        'America/Scoresbysund': [70.4833, -21.9667],
+        'America/Sitka': [57.1764, -135.3019],
+        'America/St_Johns': [47.5667, -52.7167],
+        'America/Swift_Current': [50.2833, -107.8333],
+        'America/Tegucigalpa': [14.1000, -87.2167],
+        'America/Thule': [76.5667, -68.7833],
+        'America/Tijuana': [32.5333, -117.0167],
+        'America/Toronto': [43.6500, -79.3833],
+        'America/Vancouver': [49.2667, -123.1167],
+        'America/Whitehorse': [60.7167, -135.0500],
+        'America/Winnipeg': [49.8833, -97.1500],
+        'America/Yakutat': [59.5469, -139.7272],
+        'Antarctica/Casey': [-66.2833, 110.5167],
+        'Antarctica/Davis': [-68.5833, 77.9667],
+        'Antarctica/Macquarie': [-54.5000, 158.9500],
+        'Antarctica/Mawson': [-67.6000, 62.8833],
+        'Antarctica/Palmer': [-64.8000, -64.1000],
+        'Antarctica/Rothera': [-67.5667, -68.1333],
+        'Antarctica/Troll': [-72.0114, 2.5350],
+        'Antarctica/Vostok': [-78.4000, 106.9000],
+        'Asia/Almaty': [43.2500, 76.9500],
+        'Asia/Amman': [31.9500, 35.9333],
+        'Asia/Anadyr': [64.7500, 177.4833],
+        'Asia/Aqtau': [44.5167, 50.2667],
+        'Asia/Aqtobe': [50.2833, 57.1667],
+        'Asia/Ashgabat': [37.9500, 58.3833],
+        'Asia/Atyrau': [47.1167, 51.9333],
+        'Asia/Baghdad': [33.3500, 44.4167],
+        'Asia/Baku': [40.3833, 49.8500],
+        'Asia/Bangkok': [13.7500, 100.5167],
+        'Asia/Barnaul': [53.3667, 83.7500],
+        'Asia/Beirut': [33.8833, 35.5000],
+        'Asia/Bishkek': [42.9000, 74.6000],
+        'Asia/Chita': [52.0500, 113.4667],
+        'Asia/Colombo': [6.9333, 79.8500],
+        'Asia/Damascus': [33.5000, 36.3000],
+        'Asia/Dhaka': [23.7167, 90.4167],
+        'Asia/Dili': [-8.5500, 125.5833],
+        'Asia/Dubai': [25.3000, 55.3000],
+        'Asia/Dushanbe': [38.5833, 68.8000],
+        'Asia/Famagusta': [35.1167, 33.9500],
+        'Asia/Gaza': [31.5000, 34.4667],
+        'Asia/Hebron': [31.5333, 35.0950],
+        'Asia/Ho_Chi_Minh': [10.7500, 106.6667],
+        'Asia/Hong_Kong': [22.2833, 114.1500],
+        'Asia/Hovd': [48.0167, 91.6500],
+        'Asia/Irkutsk': [52.2667, 104.3333],
+        'Asia/Jakarta': [-6.1667, 106.8000],
+        'Asia/Jayapura': [-2.5333, 140.7000],
+        'Asia/Jerusalem': [31.7806, 35.2239],
+        'Asia/Kabul': [34.5167, 69.2000],
+        'Asia/Kamchatka': [53.0167, 158.6500],
+        'Asia/Karachi': [24.8667, 67.0500],
+        'Asia/Kathmandu': [27.7167, 85.3167],
+        'Asia/Khandyga': [62.6564, 135.5539],
+        'Asia/Kolkata': [22.5333, 88.3667],
+        'Asia/Krasnoyarsk': [56.0167, 92.8333],
+        'Asia/Kuching': [1.5500, 110.3333],
+        'Asia/Macau': [22.1972, 113.5417],
+        'Asia/Magadan': [59.5667, 150.8000],
+        'Asia/Makassar': [-5.1167, 119.4000],
+        'Asia/Manila': [14.5867, 120.9678],
+        'Asia/Nicosia': [35.1667, 33.3667],
+        'Asia/Novokuznetsk': [53.7500, 87.1167],
+        'Asia/Novosibirsk': [55.0333, 82.9167],
+        'Asia/Omsk': [55.0000, 73.4000],
+        'Asia/Oral': [51.2167, 51.3500],
+        'Asia/Pontianak': [-0.0333, 109.3333],
+        'Asia/Pyongyang': [39.0167, 125.7500],
+        'Asia/Qatar': [25.2833, 51.5333],
+        'Asia/Qostanay': [53.2000, 63.6167],
+        'Asia/Qyzylorda': [44.8000, 65.4667],
+        'Asia/Riyadh': [24.6333, 46.7167],
+        'Asia/Sakhalin': [46.9667, 142.7000],
+        'Asia/Samarkand': [39.6667, 66.8000],
+        'Asia/Seoul': [37.5500, 126.9667],
+        'Asia/Shanghai': [31.2333, 121.4667],
+        'Asia/Singapore': [1.2833, 103.8500],
+        'Asia/Srednekolymsk': [67.4667, 153.7167],
+        'Asia/Taipei': [25.0500, 121.5000],
+        'Asia/Tashkent': [41.3333, 69.3000],
+        'Asia/Tbilisi': [41.7167, 44.8167],
+        'Asia/Tehran': [35.6667, 51.4333],
+        'Asia/Thimphu': [27.4667, 89.6500],
+        'Asia/Tokyo': [35.6544, 139.7447],
+        'Asia/Tomsk': [56.5000, 84.9667],
+        'Asia/Ulaanbaatar': [47.9167, 106.8833],
+        'Asia/Urumqi': [43.8000, 87.5833],
+        'Asia/Ust-Nera': [64.5603, 143.2267],
+        'Asia/Vladivostok': [43.1667, 131.9333],
+        'Asia/Yakutsk': [62.0000, 129.6667],
+        'Asia/Yangon': [16.7833, 96.1667],
+        'Asia/Yekaterinburg': [56.8500, 60.6000],
+        'Asia/Yerevan': [40.1833, 44.5000],
+        'Atlantic/Azores': [37.7333, -25.6667],
+        'Atlantic/Bermuda': [32.2833, -64.7667],
+        'Atlantic/Canary': [28.1000, -15.4000],
+        'Atlantic/Cape_Verde': [14.9167, -23.5167],
+        'Atlantic/Faroe': [62.0167, -6.7667],
+        'Atlantic/Madeira': [32.6333, -16.9000],
+        'Atlantic/South_Georgia': [-54.2667, -36.5333],
+        'Atlantic/Stanley': [-51.7000, -57.8500],
+        'Australia/Adelaide': [-34.9167, 138.5833],
+        'Australia/Brisbane': [-27.4667, 153.0333],
+        'Australia/Broken_Hill': [-31.9500, 141.4500],
+        'Australia/Darwin': [-12.4667, 130.8333],
+        'Australia/Eucla': [-31.7167, 128.8667],
+        'Australia/Hobart': [-42.8833, 147.3167],
+        'Australia/Lindeman': [-20.2667, 149.0000],
+        'Australia/Lord_Howe': [-31.5500, 159.0833],
+        'Australia/Melbourne': [-37.8167, 144.9667],
+        'Australia/Perth': [-31.9500, 115.8500],
+        'Australia/Sydney': [-33.8667, 151.2167],
+        'Europe/Andorra': [42.5000, 1.5167],
+        'Europe/Astrakhan': [46.3500, 48.0500],
+        'Europe/Athens': [37.9667, 23.7167],
+        'Europe/Belgrade': [44.8333, 20.5000],
+        'Europe/Berlin': [52.5000, 13.3667],
+        'Europe/Brussels': [50.8333, 4.3333],
+        'Europe/Bucharest': [44.4333, 26.1000],
+        'Europe/Budapest': [47.5000, 19.0833],
+        'Europe/Chisinau': [47.0000, 28.8333],
+        'Europe/Dublin': [53.3333, -6.2500],
+        'Europe/Gibraltar': [36.1333, -5.3500],
+        'Europe/Helsinki': [60.1667, 24.9667],
+        'Europe/Istanbul': [41.0167, 28.9667],
+        'Europe/Kaliningrad': [54.7167, 20.5000],
+        'Europe/Kirov': [58.6000, 49.6500],
+        'Europe/Kyiv': [50.4333, 30.5167],
+        'Europe/Lisbon': [38.7167, -9.1333],
+        'Europe/London': [51.5083, -0.1253],
+        'Europe/Madrid': [40.4000, -3.6833],
+        'Europe/Malta': [35.9000, 14.5167],
+        'Europe/Minsk': [53.9000, 27.5667],
+        'Europe/Moscow': [55.7558, 37.6178],
+        'Europe/Paris': [48.8667, 2.3333],
+        'Europe/Prague': [50.0833, 14.4333],
+        'Europe/Riga': [56.9500, 24.1000],
+        'Europe/Rome': [41.9000, 12.4833],
+        'Europe/Samara': [53.2000, 50.1500],
+        'Europe/Saratov': [51.5667, 46.0333],
+        'Europe/Simferopol': [44.9500, 34.1000],
+        'Europe/Sofia': [42.6833, 23.3167],
+        'Europe/Tallinn': [59.4167, 24.7500],
+        'Europe/Tirane': [41.3333, 19.8333],
+        'Europe/Ulyanovsk': [54.3333, 48.4000],
+        'Europe/Vienna': [48.2167, 16.3333],
+        'Europe/Vilnius': [54.6833, 25.3167],
+        'Europe/Volgograd': [48.7333, 44.4167],
+        'Europe/Warsaw': [52.2500, 21.0000],
+        'Europe/Zurich': [47.3833, 8.5333],
+        'Indian/Chagos': [-7.3333, 72.4167],
+        'Indian/Maldives': [4.1667, 73.5000],
+        'Indian/Mauritius': [-20.1667, 57.5000],
+        'Pacific/Apia': [-13.8333, -171.7333],
+        'Pacific/Auckland': [-36.8667, 174.7667],
+        'Pacific/Bougainville': [-6.2167, 155.5667],
+        'Pacific/Chatham': [-43.9500, -176.5500],
+        'Pacific/Easter': [-27.1500, -109.4333],
+        'Pacific/Efate': [-17.6667, 168.4167],
+        'Pacific/Fakaofo': [-9.3667, -171.2333],
+        'Pacific/Fiji': [-18.1333, 178.4167],
+        'Pacific/Galapagos': [-0.9000, -89.6000],
+        'Pacific/Gambier': [-23.1333, -134.9500],
+        'Pacific/Guadalcanal': [-9.5333, 160.2000],
+        'Pacific/Guam': [13.4667, 144.7500],
+        'Pacific/Honolulu': [21.3069, -157.8583],
+        'Pacific/Kanton': [-2.7833, -171.7167],
+        'Pacific/Kiritimati': [1.8667, -157.3333],
+        'Pacific/Kosrae': [5.3167, 162.9833],
+        'Pacific/Kwajalein': [9.0833, 167.3333],
+        'Pacific/Marquesas': [-9.0000, -139.5000],
+        'Pacific/Nauru': [-0.5167, 166.9167],
+        'Pacific/Niue': [-19.0167, -169.9167],
+        'Pacific/Norfolk': [-29.0500, 167.9667],
+        'Pacific/Noumea': [-22.2667, 166.4500],
+        'Pacific/Pago_Pago': [-14.2667, -170.7000],
+        'Pacific/Palau': [7.3333, 134.4833],
+        'Pacific/Pitcairn': [-25.0667, -130.0833],
+        'Pacific/Port_Moresby': [-9.5000, 147.1667],
+        'Pacific/Rarotonga': [-21.2333, -159.7667],
+        'Pacific/Tahiti': [-17.5333, -149.5667],
+        'Pacific/Tarawa': [1.4167, 173.0000],
+        'Pacific/Tongatapu': [-21.1333, -175.2000],
+      };
+
+      function normalizeLongitude(lon) {
+        return ((lon + 180) % 360 + 360) % 360 - 180;
+      }
+
+      function wrapMapX(x) {
+        if (x >= 0 && x <= MAP_WIDTH) return x;
+        let wrapped = ((x % MAP_WIDTH) + MAP_WIDTH) % MAP_WIDTH;
+        if (wrapped === 0) wrapped = MAP_WIDTH;
+        return wrapped;
+      }
+
+      function getZoneLatLon(zone, referenceInstant) {
+        if (TIMEZONE_COORDS[zone]) {
+          const [lat, lon] = TIMEZONE_COORDS[zone];
+          return { lat, lon: normalizeLongitude(lon) };
+        }
+
+        const offsetMins = getUtcOffsetMinutes(referenceInstant, zone);
+        return { lat: 0, lon: normalizeLongitude((offsetMins / 60) * 15) };
+      }
+
+      function getBaseMapShiftX(referenceInstant) {
+        const { lon } = getZoneLatLon(localZone, referenceInstant);
+        return (MAP_WIDTH / 2) - lonToX(lon);
+      }
+
+      function renderTimezoneMarkers(shiftX) {
+        const markersGroup = document.getElementById('timezone-markers');
+        const labelsGroup = document.getElementById('timezone-labels');
+        const tooltipGroup = document.getElementById('timezone-tooltip');
+        const tooltipBg = document.getElementById('timezone-tooltip-bg');
+        const tooltipText = document.getElementById('timezone-tooltip-text');
+        markersGroup.innerHTML = '';
+        labelsGroup.innerHTML = '';
+        tooltipGroup.setAttribute('visibility', 'hidden');
+        const mapEl = worldMapEl;
+        const mapWidthPx = (mapEl ? mapEl.getBoundingClientRect().width : 0) || MAP_WIDTH;
+        const scale = mapWidthPx / MAP_WIDTH || 1;
+        const showInlineLabels = mapWidthPx >= 700;
+        const dotPx = mapWidthPx < 420 ? 4.5 : 4;
+        const haloPx = dotPx + 3;
+        const dotRadius = dotPx / scale;
+        const haloRadius = haloPx / scale;
+        const strokeWidth = 1.2 / scale;
+        const labelOffset = 6 / scale;
+        const shift = Number.isFinite(shiftX) ? shiftX : 0;
+
+        const allZones = [localZone].concat(userZones);
+        allZones.forEach(zone => {
+          // Look up coordinates, or use UTC offset approximation as fallback
+          let lat, lon;
+          if (TIMEZONE_COORDS[zone]) {
+            [lat, lon] = TIMEZONE_COORDS[zone];
+          } else {
+            // Fallback: use UTC offset for longitude, equator for latitude
+            const offsetMins = getUtcOffsetMinutes(currentInstant, zone);
+            const offsetHours = offsetMins / 60;
+            lon = offsetHours * 15;
+            lat = 0;
+          }
+
+          lon = normalizeLongitude(lon);
+          const x = wrapMapX(lonToX(lon) + shift);
+          const y = latToY(lat);
+
+          const color = zone === localZone ? '#2f7fd6' : '#d64b4b';
+          const label = zone.split('/').pop().replace(/_/g, ' ');
+
+          const halo = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          halo.setAttribute('class', 'marker-halo');
+          halo.setAttribute('cx', x);
+          halo.setAttribute('cy', y);
+          halo.setAttribute('r', haloRadius);
+          halo.setAttribute('fill', color);
+
+          const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          dot.setAttribute('class', 'marker-dot');
+          dot.setAttribute('cx', x);
+          dot.setAttribute('cy', y);
+          dot.setAttribute('r', dotRadius);
+          dot.setAttribute('fill', color);
+          dot.setAttribute('stroke', '#fff');
+          dot.setAttribute('stroke-width', strokeWidth);
+
+          markersGroup.appendChild(halo);
+          markersGroup.appendChild(dot);
+
+          if (showInlineLabels) {
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            let textX = x + labelOffset;
+            const maxX = MAP_WIDTH - 4;
+            if (textX > maxX) {
+              textX = x - labelOffset;
+              text.setAttribute('text-anchor', 'end');
+            }
+            text.setAttribute('x', textX);
+            text.setAttribute('y', y - labelOffset);
+            text.textContent = label;
+            labelsGroup.appendChild(text);
+          } else {
+            const showTooltip = () => {
+              tooltipText.textContent = label;
+              tooltipText.setAttribute('x', x);
+              tooltipText.setAttribute('y', y - (12 / scale));
+              tooltipText.setAttribute('text-anchor', 'middle');
+
+              const bbox = tooltipText.getBBox();
+              const padding = 4 / scale;
+              tooltipBg.setAttribute('x', bbox.x - padding);
+              tooltipBg.setAttribute('y', bbox.y - padding);
+              tooltipBg.setAttribute('width', bbox.width + padding * 2);
+              tooltipBg.setAttribute('height', bbox.height + padding * 2);
+              tooltipGroup.setAttribute('visibility', 'visible');
+            };
+            halo.style.cursor = 'pointer';
+            dot.style.cursor = 'pointer';
+            halo.addEventListener('click', showTooltip);
+            dot.addEventListener('click', showTooltip);
+          }
+        });
+      }
+
+      function renderTimeLabels(shiftX) {
+        const labelsGroup = document.getElementById('time-labels');
+        labelsGroup.innerHTML = '';
+        const shift = Number.isFinite(shiftX) ? shiftX : 0;
+
+        for (let lon = -180; lon <= 165; lon += 30) {
+          const x = wrapMapX(lonToX(lon) + shift);
+          const y = 415;
+
+          const offsetHours = lon / 15;
+          const utcHours = currentInstant.getUTCHours() + currentInstant.getUTCMinutes() / 60;
+          const localHours = (utcHours + offsetHours + 24) % 24;
+
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('x', x);
+          text.setAttribute('y', y);
+          text.textContent = Math.floor(localHours).toString().padStart(2, '0') + 'h';
+
+          labelsGroup.appendChild(text);
+        }
+      }
+
+      function renderMap() {
+        const baseShiftX = getBaseMapShiftX(baseInstant);
+        const timeShiftX = (offsetMinutes / offsetRangeMinutes) * MAP_WIDTH;
+        const earthShiftX = baseShiftX + timeShiftX;
+
+        if (earthWrapEl) earthWrapEl.setAttribute('transform', `translate(${earthShiftX} 0)`);
+        if (terminatorWrapEl) terminatorWrapEl.setAttribute('transform', `translate(${baseShiftX} 0)`);
+
+        renderDayNightTerminator(baseInstant);
+        renderTimezoneMarkers(earthShiftX);
+        renderTimeLabels(earthShiftX);
+      }
+
+      function removeZone(zone) {
+        const idx = userZones.findIndex(z => z.toLowerCase() === zone.toLowerCase());
+        if (idx !== -1) {
+          userZones.splice(idx, 1);
+          seenZones.delete(zone.toLowerCase());
+          if (activeEditorZone && activeEditorZone.toLowerCase() === zone.toLowerCase()) {
+            activeEditorZone = null;
+            shouldFocusEditor = false;
+          }
+          renderZones();
+          renderMap();
+          updateUrl();
+        }
+      }
+
+      // Add zone
+      formEl.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const newZone = inputEl.value.trim();
+        if (!newZone) return;
+
+        try {
+          Intl.DateTimeFormat(undefined, { timeZone: newZone });
+          const lower = newZone.toLowerCase();
+          if (seenZones.has(lower)) {
+            feedbackEl.textContent = 'Already added';
+            feedbackEl.className = 'feedback';
+          } else {
+            seenZones.add(lower);
+            userZones.push(newZone);
+            saveRecentZone(newZone);
+            populateTimezoneList();
+            feedbackEl.textContent = 'Added ' + newZone;
+            feedbackEl.className = 'feedback success';
+            renderZones();
+            renderMap();
+            updateUrl();
+          }
+        } catch {
+          feedbackEl.textContent = 'Invalid timezone';
+          feedbackEl.className = 'feedback';
+        }
+        inputEl.value = '';
+        setTimeout(() => { feedbackEl.textContent = ''; }, 3000);
+      });
+
+      function scheduleUrlUpdate() {
+        clearTimeout(urlUpdateTimer);
+        urlUpdateTimer = setTimeout(() => {
+          updateUrl();
+        }, 200);
+      }
+
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      const snapOffsetMinutes = (valueMinutes) => {
+        const snapped = Math.round(valueMinutes / offsetStepMinutes) * offsetStepMinutes;
+        return snapped === 0 ? 0 : snapped;
+      };
+
+      function setOffsetMinutes(nextOffsetMinutes) {
+        const clamped = clamp(
+          snapOffsetMinutes(nextOffsetMinutes),
+          offsetMinMinutes,
+          offsetMaxMinutes
+        );
+        offsetMinutes = clamped;
+        currentInstant = new Date(baseInstant.getTime() + offsetMinutes * 60000);
+        renderAll();
+        scheduleUrlUpdate();
+      }
+
+      // Drag the reticule to change time
+      (() => {
+        if (!reticuleEl) return;
+        if (!('PointerEvent' in window)) return;
+
+        const drag = {
+          active: false,
+          pointerId: null,
+          startX: 0,
+          startY: 0,
+          startOffsetMinutes: 0,
+          engaged: false,
+          pendingOffsetMinutes: null,
+          rafId: 0
+        };
+
+        const scheduleApply = (nextOffsetMinutes) => {
+          drag.pendingOffsetMinutes = nextOffsetMinutes;
+          if (drag.rafId) return;
+          drag.rafId = requestAnimationFrame(() => {
+            drag.rafId = 0;
+            const pending = drag.pendingOffsetMinutes;
+            drag.pendingOffsetMinutes = null;
+            if (pending == null) return;
+            setOffsetMinutes(pending);
+          });
+        };
+
+        const onPointerDown = (e) => {
+          const segmentEl = e.target instanceof Element
+            ? e.target.closest('.slider-reticule-segment')
+            : null;
+          if (!segmentEl) return;
+          if (e.button != null && e.button !== 0) return;
+          drag.active = true;
+          drag.pointerId = e.pointerId;
+          drag.startX = e.clientX;
+          drag.startY = e.clientY;
+          drag.startOffsetMinutes = offsetMinutes;
+          drag.engaged = false;
+          appEl.classList.add('reticule-dragging');
+          reticuleEl.setPointerCapture(e.pointerId);
+          e.preventDefault();
+        };
+
+        const onPointerMove = (e) => {
+          if (!drag.active) return;
+          if (e.pointerId !== drag.pointerId) return;
+
+          const dxPx = e.clientX - drag.startX;
+          const dyPx = e.clientY - drag.startY;
+
+          if (!drag.engaged) {
+            const intentThresholdPx = 6;
+            if (Math.abs(dxPx) < intentThresholdPx) return;
+            if (Math.abs(dxPx) < Math.abs(dyPx)) return;
+            drag.engaged = true;
+          }
+
+          const axisRect = getTimeAxisRect();
+          const axisWidthPx = axisRect.width || MAP_WIDTH;
+          const minutesPerPx = offsetRangeMinutes / axisWidthPx;
+          const nextOffsetMinutes = drag.startOffsetMinutes + dxPx * minutesPerPx;
+
+          scheduleApply(nextOffsetMinutes);
+          e.preventDefault();
+        };
+
+        const endDrag = (e) => {
+          if (!drag.active) return;
+          if (e.pointerId !== drag.pointerId) return;
+          drag.active = false;
+          drag.pointerId = null;
+          drag.engaged = false;
+          appEl.classList.remove('reticule-dragging');
+        };
+
+        reticuleEl.addEventListener('pointerdown', onPointerDown);
+        reticuleEl.addEventListener('pointermove', onPointerMove);
+        reticuleEl.addEventListener('pointerup', endDrag);
+        reticuleEl.addEventListener('pointercancel', endDrag);
+      })();
+
+      // Drag the map to change time
+      (() => {
+        if (!worldMapEl) return;
+        if (!('PointerEvent' in window)) return;
+
+        const drag = {
+          active: false,
+          pointerId: null,
+          startX: 0,
+          startY: 0,
+          startOffsetMinutes: 0,
+          didDrag: false,
+          engaged: false,
+          pendingOffsetMinutes: null,
+          rafId: 0
+        };
+
+        const isPointWithinMap = (clientX, clientY) => {
+          const rect = worldMapEl.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return false;
+          return (
+            clientX >= rect.left &&
+            clientX <= rect.right &&
+            clientY >= rect.top &&
+            clientY <= rect.bottom
+          );
+        };
+
+        const scheduleApply = (nextOffsetMinutes) => {
+          drag.pendingOffsetMinutes = nextOffsetMinutes;
+          if (drag.rafId) return;
+          drag.rafId = requestAnimationFrame(() => {
+            drag.rafId = 0;
+            const pending = drag.pendingOffsetMinutes;
+            drag.pendingOffsetMinutes = null;
+            if (pending == null) return;
+            setOffsetMinutes(pending);
+          });
+        };
+
+        const onPointerDown = (e) => {
+          if (e.button != null && e.button !== 0) return;
+          if (!isPointWithinMap(e.clientX, e.clientY)) return;
+          const segmentEl = e.target instanceof Element
+            ? e.target.closest('.slider-reticule-segment')
+            : null;
+          if (segmentEl) return;
+          drag.active = true;
+          drag.pointerId = e.pointerId;
+          drag.startX = e.clientX;
+          drag.startY = e.clientY;
+          drag.startOffsetMinutes = offsetMinutes;
+          drag.didDrag = false;
+          drag.engaged = false;
+          appEl.classList.add('map-dragging');
+          try {
+            appEl.setPointerCapture(e.pointerId);
+          } catch {}
+          e.preventDefault();
+        };
+
+        const onPointerMove = (e) => {
+          if (!drag.active) return;
+          if (e.pointerId !== drag.pointerId) return;
+
+          const dxPx = e.clientX - drag.startX;
+          const dyPx = e.clientY - drag.startY;
+
+          if (!drag.engaged) {
+            const intentThresholdPx = 6;
+            if (Math.abs(dxPx) < intentThresholdPx) return;
+            if (Math.abs(dxPx) < Math.abs(dyPx)) return;
+            drag.engaged = true;
+          }
+
+          if (Math.abs(dxPx) >= 3) drag.didDrag = true;
+
+          const mapWidthPx = worldMapEl.getBoundingClientRect().width || MAP_WIDTH;
+          const minutesPerPx = offsetRangeMinutes / mapWidthPx;
+
+          const nextOffsetMinutes = drag.startOffsetMinutes + dxPx * minutesPerPx;
+          scheduleApply(nextOffsetMinutes);
+          e.preventDefault();
+        };
+
+        const endDrag = (e) => {
+          if (!drag.active) return;
+          if (e.pointerId !== drag.pointerId) return;
+          drag.active = false;
+          drag.pointerId = null;
+          drag.engaged = false;
+          appEl.classList.remove('map-dragging');
+          try {
+            appEl.releasePointerCapture(e.pointerId);
+          } catch {}
+        };
+
+        appEl.addEventListener('pointerdown', onPointerDown, true);
+        appEl.addEventListener('pointermove', onPointerMove);
+        appEl.addEventListener('pointerup', endDrag);
+        appEl.addEventListener('pointercancel', endDrag);
+
+        appEl.addEventListener('click', (e) => {
+          if (!drag.didDrag) return;
+          if (!isPointWithinMap(e.clientX, e.clientY)) return;
+          drag.didDrag = false;
+          e.preventDefault();
+          e.stopPropagation();
+        }, true);
+      })();
+
+      function resetNow() {
+        baseInstant = snapInstantToSliderStep(new Date());
+        offsetMinutes = 0;
+        currentInstant = new Date(baseInstant.getTime());
+        renderAll();
+        updateUrl();
+      }
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          activeEditorZone = null;
+          shouldFocusEditor = false;
+          renderAll();
+        }
+      });
+
+      // Share buttons
+      shareNativeBtn.addEventListener('click', () => {
+        if (navigator.share) {
+          navigator.share({
+            url: window.location.href
+          }).catch(() => {});
+        }
+      });
+
+      function copyText(text, btn) {
+        navigator.clipboard.writeText(text).then(() => {
+          btn.classList.add('copied');
+          const orig = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.textContent = orig;
+          }, 2000);
+        });
+      }
+
+      copyLinkBtn.addEventListener('click', () => {
+        copyText(window.location.href, copyLinkBtn);
+      });
+
+      copyMarkdownBtn.addEventListener('click', () => {
+        const mdLabel = [localZone].concat(userZones).map(zone => {
+          const shortZone = zone.split('/')[1] || zone;
+          return formatZoneTime(currentInstant, zone) + ' (' + shortZone + ')';
+        }).join(' | ');
+        const mdText = `[${mdLabel}](${window.location.href})`;
+        copyText(mdText, copyMarkdownBtn);
+      });
+
+      copyDiscordBtn.addEventListener('click', () => {
+        const epochSeconds = Math.floor(currentInstant.getTime() / 1000);
+        const discordText = `<t:${epochSeconds}:f>`;
+        copyText(discordText, copyDiscordBtn);
+      });
+
+      window.addEventListener('resize', () => {
+        renderAll();
+      });
+      window.addEventListener('scroll', () => {
+        updateReticule(getTimeAxisRect());
+      }, { passive: true });
+
+      // Initial render
+      renderAll();
+      updateUrl();
+    })();
+  </script>
+
+  </div>
+</body>
+</html>
