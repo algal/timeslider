@@ -60,6 +60,27 @@
       touch-action: pan-y;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
     }
+    .slider-reticule-segment.is-pinned {
+      border-style: dashed;
+      border-color: rgba(74, 144, 226, 0.55);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+    }
+    .slider-reticule-indicator {
+      position: absolute;
+      top: -0.55rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.7rem;
+      line-height: 1;
+      padding: 0.2rem 0.4rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid rgba(74, 144, 226, 0.4);
+      color: rgba(74, 144, 226, 0.95);
+      white-space: nowrap;
+      pointer-events: none;
+      font-variant-numeric: tabular-nums;
+    }
     .app.reticule-dragging .slider-reticule-segment {
       cursor: grabbing;
     }
@@ -1159,7 +1180,9 @@
 
         const appRect = appEl.getBoundingClientRect();
 
-        const ratio = (offsetMinutes - offsetMinMinutes) / offsetRangeMinutes;
+        const pinnedOffsetMinutes = clamp(offsetMinutes, offsetMinMinutes, offsetMaxMinutes);
+        const beyondMinutes = offsetMinutes - pinnedOffsetMinutes;
+        const ratio = (pinnedOffsetMinutes - offsetMinMinutes) / offsetRangeMinutes;
 
         const axis = sliderAxisRect || getTimeAxisRect();
         const xViewport = axis.startX + ratio * axis.width;
@@ -1187,6 +1210,13 @@
         const height = (maxBottom - minTop) + extraPx * 2;
         const line = document.createElement('div');
         line.className = 'slider-reticule-segment';
+        if (beyondMinutes !== 0) {
+          line.classList.add('is-pinned');
+          const indicator = document.createElement('div');
+          indicator.className = 'slider-reticule-indicator';
+          indicator.textContent = formatBeyondMinutes(beyondMinutes);
+          line.appendChild(indicator);
+        }
         line.style.left = x + 'px';
         line.style.top = top + 'px';
         line.style.height = height + 'px';
@@ -1995,7 +2025,8 @@
 
       function renderMap() {
         const baseShiftX = getBaseMapShiftX(baseInstant);
-        const timeShiftX = (offsetMinutes / offsetRangeMinutes) * MAP_WIDTH;
+        const wrappedOffsetMinutes = wrapOffsetMinutes(offsetMinutes, offsetRangeMinutes);
+        const timeShiftX = (wrappedOffsetMinutes / offsetRangeMinutes) * MAP_WIDTH;
         const earthShiftX = baseShiftX + timeShiftX;
 
         if (earthWrapEl) earthWrapEl.setAttribute('transform', `translate(${earthShiftX} 0)`);
@@ -2065,13 +2096,28 @@
         return snapped === 0 ? 0 : snapped;
       };
 
+      function formatBeyondMinutes(beyondMinutes) {
+        const direction = beyondMinutes > 0 ? '→' : '←';
+        const absMinutes = Math.abs(beyondMinutes);
+        const days = Math.floor(absMinutes / 1440);
+        const hours = Math.floor((absMinutes % 1440) / 60);
+        const minutes = absMinutes % 60;
+        let text = '';
+        if (days) text += days + 'd ';
+        text += (hours ? hours + 'h' : '0h');
+        if (minutes) text += ':' + String(minutes).padStart(2, '0');
+        return direction + ' ' + (beyondMinutes > 0 ? '+' : '-') + text;
+      }
+
+      function wrapOffsetMinutes(valueMinutes, rangeMinutes) {
+        if (!Number.isFinite(valueMinutes)) return 0;
+        const half = rangeMinutes / 2;
+        const wrapped = (((valueMinutes + half) % rangeMinutes) + rangeMinutes) % rangeMinutes - half;
+        return Math.abs(wrapped) < 1e-9 ? 0 : wrapped;
+      }
+
       function setOffsetMinutes(nextOffsetMinutes) {
-        const clamped = clamp(
-          snapOffsetMinutes(nextOffsetMinutes),
-          offsetMinMinutes,
-          offsetMaxMinutes
-        );
-        offsetMinutes = clamped;
+        offsetMinutes = snapOffsetMinutes(nextOffsetMinutes);
         currentInstant = new Date(baseInstant.getTime() + offsetMinutes * 60000);
         renderAll();
         scheduleUrlUpdate();
