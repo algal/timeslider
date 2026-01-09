@@ -12,14 +12,14 @@
     body {
       font-family: system-ui, -apple-system, sans-serif;
       margin: 0;
-      padding: 1.5rem;
+      padding: 0.75rem;
       line-height: 1.5;
       color: #1a1a1a;
       background: #fff;
     }
     .app {
       width: 100%;
-      max-width: 60rem;
+      max-width: 40rem;
       margin: 0 auto;
       position: relative;
     }
@@ -101,6 +101,7 @@
       background: #f0f7ff;
       border-color: #4a90e2;
       border-width: 2px;
+      padding-bottom: 0.25rem;
     }
     /* Left column: identity */
     .zone-name {
@@ -431,9 +432,7 @@
 
     /* Share section */
     .share-section {
-      margin: 1.5rem 0;
-      padding-top: 1rem;
-      border-top: 1px solid #ccc;
+      margin: 1rem 0rem;
     }
     .share-section h2 {
       font-size: 0.85rem;
@@ -445,7 +444,7 @@
       font-size: 0.85rem;
       font-weight: 400;
       color: #888;
-      margin: 0 0 0.75rem;
+      margin: 0 0 0.5rem;
     }
     .share-buttons {
       display: flex;
@@ -642,12 +641,10 @@
 
     /* Map section */
     .map-section {
-      margin: 1rem 0;
-      border-top: 1px solid #ccc;
-      padding-top: 1rem;
+      margin: 0;
     }
     .zones-section {
-      margin: 1.5rem 0;
+      margin: 1rem 0;
     }
     .section-title {
       font-size: 0.85rem;
@@ -655,7 +652,7 @@
       padding: 0.5rem 0;
     }
     #world-map {
-      margin-top: 0.75rem;
+      margin-top: 0rem;
       width: 100%;
       display: block;
       height: auto;
@@ -674,9 +671,7 @@
     .iso-display {
       font-size: 0.8rem;
       color: #666;
-      margin-top: 1.5rem;
-      padding-top: 1rem;
-      border-top: 1px solid #ccc;
+      margin-top: 0.5rem;
     }
     .iso-display .iso-label {
       display: inline-block;
@@ -689,6 +684,10 @@
     .iso-display div {
       margin-bottom: 0.25rem;
     }
+    .author {
+    padding: 0.5rem 0;
+    }
+    .author p { margin: 0em; }
 
     /* Real map styling */
     :root {
@@ -826,7 +825,6 @@
   </div>
 
   <div class="share-section">
-    <h2>Share</h2>
     <p>Share URLs include the selected time and time zones.</p>
     <div class="share-buttons">
       <button type="button" class="share-btn" id="share-native" style="display:none">Share</button>
@@ -839,7 +837,7 @@
   <div class="iso-display" id="iso-display"></div>
 
   <div class="author">
-    <p>Designed &amp; built by <a href="https://alexisgallagher.com">Alexis</a> at <a href="https://answer.ai">answer.ai</a></p>
+    <p>Designed &amp; built by <a href="https://alexisgallagher.com">Alexis</a> of <a href="https://answer.ai">answer.ai</a></p>
   </div>
 
   <script>
