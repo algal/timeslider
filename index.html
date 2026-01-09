@@ -639,10 +639,11 @@
       font-size: 0.85rem;
     }
 
-    /* Map section */
-    .map-section {
-      margin: 0;
-    }
+	    /* Map section */
+	    .map-section {
+	      margin: 0;
+	      position: relative;
+	    }
     .zones-section {
       margin: 1rem 0;
     }
@@ -663,9 +664,77 @@
       -webkit-user-select: none;
       user-select: none;
     }
-    .app.map-dragging #world-map {
-      cursor: grabbing;
-    }
+	    .app.map-dragging #world-map {
+	      cursor: grabbing;
+	    }
+
+	    .map-onboarding {
+	      position: absolute;
+	      inset: 0;
+	      pointer-events: none;
+	      z-index: 5;
+	      opacity: 1;
+	      transform: translateY(0);
+	      transition: opacity 180ms ease, transform 180ms ease;
+	    }
+	    .map-onboarding.is-hidden {
+	      opacity: 0;
+	      transform: translateY(6px);
+	    }
+	    .map-ghost-swipe {
+	      position: absolute;
+	      left: 50%;
+	      top: 55%;
+	      transform: translate(-50%, -50%);
+	      width: 220px;
+	      height: 76px;
+	    }
+	    .map-ghost-label {
+	      position: absolute;
+	      top: 0;
+	      left: 50%;
+	      transform: translateX(-50%);
+	      display: inline-flex;
+	      align-items: center;
+	      gap: 0.35rem;
+	      padding: 0.25rem 0.6rem;
+	      border-radius: 999px;
+	      background: rgba(255, 255, 255, 0.88);
+	      border: 1px solid rgba(0, 0, 0, 0.18);
+	      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.12);
+	      font-size: 0.85rem;
+	      color: #1a1a1a;
+	      letter-spacing: 0.2px;
+	      -webkit-backdrop-filter: blur(6px);
+	      backdrop-filter: blur(6px);
+	    }
+	    .map-ghost-finger {
+	      position: absolute;
+	      left: 50%;
+	      top: 52px;
+	      width: 34px;
+	      height: 34px;
+	      border-radius: 999px;
+	      border: 2px solid rgba(74, 144, 226, 0.75);
+	      background: rgba(255, 255, 255, 0.55);
+	      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12);
+	      transform: translate(-50%, -50%) translateX(-58px);
+	      opacity: 0;
+	      animation: map-ghost-swipe 1.7s ease-in-out 0.6s 2;
+	    }
+	    @keyframes map-ghost-swipe {
+	      0% { transform: translate(-50%, -50%) translateX(-58px); opacity: 0; }
+	      15% { opacity: 1; }
+	      50% { transform: translate(-50%, -50%) translateX(58px); opacity: 1; }
+	      85% { opacity: 1; }
+	      100% { transform: translate(-50%, -50%) translateX(-58px); opacity: 0; }
+	    }
+	    @media (prefers-reduced-motion: reduce) {
+	      .map-ghost-finger {
+	        animation: none;
+	        opacity: 0;
+	      }
+	    }
 
     /* Footer */
     .iso-display {
@@ -766,9 +835,9 @@
     <div class="feedback" id="zone-feedback" aria-live="polite"></div>
   </div>
 
-  <div class="map-section">
-    <!-- <div class="section-title">Map</div> -->
-    <svg id="world-map" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid meet">
+	  <div class="map-section">
+	    <!-- <div class="section-title">Map</div> -->
+	    <svg id="world-map" viewBox="0 0 800 420" preserveAspectRatio="xMidYMid meet">
       <!-- Ocean background -->
       <rect id="ocean" x="0" y="0" width="800" height="400" fill="#b3d9f2"/>
 
@@ -819,10 +888,19 @@
         <text id="timezone-tooltip-text"></text>
       </g>
 
-      <!-- Time labels below map -->
-      <g id="time-labels" font-size="10" fill="#222" font-weight="500" text-anchor="middle"></g>
-    </svg>
-  </div>
+	      <!-- Time labels below map -->
+	      <g id="time-labels" font-size="10" fill="#222" font-weight="500" text-anchor="middle"></g>
+	    </svg>
+		    <div class="map-onboarding" id="map-onboarding" aria-hidden="true">
+		      <div class="map-ghost-swipe">
+		        <div class="map-ghost-label">
+		          <span>Drag</span>
+		          <span aria-hidden="true">↔</span>
+		        </div>
+		        <div class="map-ghost-finger" aria-hidden="true"></div>
+		      </div>
+		    </div>
+		  </div>
 
   <div class="share-section">
     <p>Share URLs include the selected time and time zones.</p>
@@ -878,16 +956,29 @@
       const formEl = document.getElementById('zone-form');
       const inputEl = document.getElementById('zone-input');
       const feedbackEl = document.getElementById('zone-feedback');
-      const reticuleEl = document.getElementById('slider-reticule');
-      const worldMapEl = document.getElementById('world-map');
-      const earthWrapEl = document.getElementById('earth-wrap');
+	      const reticuleEl = document.getElementById('slider-reticule');
+	      const worldMapEl = document.getElementById('world-map');
+	      const mapOnboardingEl = document.getElementById('map-onboarding');
+	      const earthWrapEl = document.getElementById('earth-wrap');
       const terminatorWrapEl = document.getElementById('terminator-wrap');
       const isoDisplayEl = document.getElementById('iso-display');
       const shareNativeBtn = document.getElementById('share-native');
       const copyLinkBtn = document.getElementById('copy-link');
       const copyMarkdownBtn = document.getElementById('copy-markdown');
       const copyDiscordBtn = document.getElementById('copy-discord');
-      let urlUpdateTimer;
+	      let urlUpdateTimer;
+
+	      let mapOnboardingDismissed = false;
+	      function dismissMapOnboarding() {
+	        if (mapOnboardingDismissed) return;
+	        mapOnboardingDismissed = true;
+	        if (!mapOnboardingEl) return;
+	        mapOnboardingEl.classList.add('is-hidden');
+	      }
+
+	      if (mapOnboardingEl) {
+	        window.setTimeout(() => dismissMapOnboarding(), 4500);
+	      }
 
       let activeEditorZone = null;
       let shouldFocusEditor = false;
@@ -2173,12 +2264,13 @@
           const dxPx = e.clientX - drag.startX;
           const dyPx = e.clientY - drag.startY;
 
-          if (!drag.engaged) {
-            const intentThresholdPx = 6;
-            if (Math.abs(dxPx) < intentThresholdPx) return;
-            if (Math.abs(dxPx) < Math.abs(dyPx)) return;
-            drag.engaged = true;
-          }
+	          if (!drag.engaged) {
+	            const intentThresholdPx = 6;
+	            if (Math.abs(dxPx) < intentThresholdPx) return;
+	            if (Math.abs(dxPx) < Math.abs(dyPx)) return;
+	            drag.engaged = true;
+	            dismissMapOnboarding();
+	          }
 
           const axisRect = getTimeAxisRect();
           const axisWidthPx = axisRect.width || MAP_WIDTH;
